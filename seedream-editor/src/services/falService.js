@@ -196,6 +196,139 @@ export async function submitVeo31Request({
 }
 
 /**
+ * Submit an image-to-image request to fal.ai Wan v2.6
+ * @param {Object} params - Request parameters
+ * @param {string} params.prompt - The editing prompt (max 2000 characters)
+ * @param {string[]} params.imageUrls - Array of reference image URLs (1-3 images)
+ * @param {Function} params.onQueueUpdate - Queue update callback
+ * @param {boolean} params.logs - Enable logs
+ * @param {string} params.negativePrompt - Content to avoid (max 500 characters)
+ * @param {string} params.imageSize - Image size preset or custom dimensions
+ * @param {number} params.numImages - Number of images to generate (1-4)
+ * @param {boolean} params.enablePromptExpansion - Enable LLM prompt optimization
+ * @param {number} params.seed - Random seed for reproducibility
+ * @param {boolean} params.enableSafetyChecker - Enable content moderation
+ * @returns {Promise<Object>} - The result data
+ */
+export async function submitWanRequest({
+  prompt,
+  imageUrls,
+  onQueueUpdate,
+  logs = true,
+  negativePrompt = '',
+  imageSize = 'square_hd',
+  numImages = 1,
+  enablePromptExpansion = true,
+  seed = null,
+  enableSafetyChecker = true
+}) {
+  if (!apiKey) {
+    throw new Error('FAL API key is not configured. Please set VITE_FAL_KEY in your .env file.');
+  }
+
+  try {
+    const input = {
+      prompt,
+      image_urls: imageUrls,
+      negative_prompt: negativePrompt,
+      image_size: imageSize,
+      num_images: numImages,
+      enable_prompt_expansion: enablePromptExpansion,
+      enable_safety_checker: enableSafetyChecker
+    };
+
+    // Only add seed if provided
+    if (seed !== null && seed !== undefined) {
+      input.seed = seed;
+    }
+
+    const result = await fal.subscribe('wan/v2.6/image-to-image', {
+      input,
+      logs,
+      onQueueUpdate
+    });
+
+    console.log('Wan v2.6 API Result:', result);
+    console.log('Result data:', result.data);
+    console.log('Result images:', result.data?.images);
+
+    return result.data || result;
+  } catch (error) {
+    console.error('Error submitting Wan v2.6 request:', error);
+    throw new Error(`Failed to submit request: ${error.message}`);
+  }
+}
+
+/**
+ * Submit an image-to-video request to fal.ai Wan 2.5
+ * @param {Object} params - Request parameters
+ * @param {string} params.prompt - The motion prompt (max 800 characters)
+ * @param {string} params.imageUrl - URL of the first frame image
+ * @param {Function} params.onQueueUpdate - Queue update callback
+ * @param {boolean} params.logs - Enable logs
+ * @param {string} params.resolution - Video resolution (480p, 720p, 1080p)
+ * @param {string} params.duration - Video duration (5, 10)
+ * @param {string} params.audioUrl - Optional background music URL
+ * @param {string} params.negativePrompt - Content to avoid (max 500 characters)
+ * @param {boolean} params.enablePromptExpansion - Enable LLM prompt rewriting
+ * @param {number} params.seed - Random seed for reproducibility
+ * @param {boolean} params.enableSafetyChecker - Enable content filtering
+ * @returns {Promise<Object>} - The result data
+ */
+export async function submitWan25Request({
+  prompt,
+  imageUrl,
+  onQueueUpdate,
+  logs = true,
+  resolution = '1080p',
+  duration = '5',
+  audioUrl = null,
+  negativePrompt = '',
+  enablePromptExpansion = true,
+  seed = null,
+  enableSafetyChecker = true
+}) {
+  if (!apiKey) {
+    throw new Error('FAL API key is not configured. Please set VITE_FAL_KEY in your .env file.');
+  }
+
+  try {
+    const input = {
+      prompt,
+      image_url: imageUrl,
+      resolution,
+      duration,
+      negative_prompt: negativePrompt,
+      enable_prompt_expansion: enablePromptExpansion,
+      enable_safety_checker: enableSafetyChecker
+    };
+
+    // Add optional fields only if provided
+    if (audioUrl) {
+      input.audio_url = audioUrl;
+    }
+    if (seed !== null && seed !== undefined) {
+      input.seed = seed;
+    }
+
+    const result = await fal.subscribe('fal-ai/wan-25-preview/image-to-video', {
+      input,
+      logs,
+      onQueueUpdate
+    });
+
+    console.log('Wan 2.5 API Result:', result);
+    console.log('Result data:', result.data);
+    console.log('Result video:', result.data?.video);
+
+    return result.data || result;
+  } catch (error) {
+    console.error('Error submitting Wan 2.5 request:', error);
+    throw new Error(`Failed to submit request: ${error.message}`);
+  }
+}
+
+/**
  * Check if API key is configured
  * @returns {boolean}
  */

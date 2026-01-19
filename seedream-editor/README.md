@@ -4,10 +4,12 @@ A web application for editing images using fal.ai's SeeD Dream v4.5 and Nano Ban
 
 ## Features
 
-- **Three AI Models**:
+- **Five AI Models**:
   - SeeD Dream v4.5 - Advanced image editing with reference images
   - Nano Banana Pro - Fast image generation with multiple aspect ratios
   - Veo 3.1 - Reference-to-video generation with audio
+  - Wan v2.6 - Advanced image-to-image generation with prompt expansion
+  - Wan 2.5 - Image-to-video generation with motion prompts
 
 - **Girls Management**: Create and manage girl profiles with images, names, and handles
 
@@ -87,6 +89,32 @@ A web application for editing images using fal.ai's SeeD Dream v4.5 and Nano Ban
    - Enable/disable auto fix (rewrites prompts failing content policy)
 4. Click "Generate Video"
 
+### Wan v2.6
+1. Enter a prompt (max 2000 characters, supports Chinese and English)
+2. Upload reference images (1-3 required, order matters)
+3. Configure settings:
+   - Negative prompt (content to avoid, max 500 characters)
+   - Image size (square_hd, portrait, landscape presets)
+   - Number of images (1-4)
+   - Seed (for reproducibility, optional)
+   - Enable/disable prompt expansion (LLM optimization, adds 3-4 seconds)
+   - Enable/disable safety checker
+4. Click "Generate Images"
+
+### Wan 2.5
+1. Enter a motion prompt (max 800 characters)
+2. Upload a first frame image (360-2000px, max 10MB)
+3. Optional: Upload background audio (WAV/MP3, 3-30s, max 15MB)
+4. Configure settings:
+   - Resolution (480p, 720p, 1080p)
+   - Duration (5 or 10 seconds)
+   - Negative prompt (content to avoid, max 500 characters)
+   - Seed (for reproducibility, optional)
+   - Enable/disable prompt expansion (LLM rewriting)
+   - Enable/disable safety checker
+5. Click "Generate Video"
+   - Processing time: 1-3 minutes (longer for 10s videos)
+
 ### Girls Management
 1. Click "Girls" in the sidebar
 2. Click "+ Add New Girl" button
@@ -125,7 +153,7 @@ The backend server provides the following endpoints:
 
 - **Frontend**: React 19, Vite, Tailwind CSS, shadcn/ui
 - **Backend**: Express.js, SQLite3
-- **APIs**: fal.ai (SeeD Dream v4.5, Nano Banana Pro, Veo 3.1)
+- **APIs**: fal.ai (SeeD Dream v4.5, Nano Banana Pro, Veo 3.1, Wan v2.6, Wan 2.5)
 - **UI Components**: Radix UI primitives
 
 ## Project Structure

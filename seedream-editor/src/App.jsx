@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { isApiKeyConfigured } from './services/falService';
-import { uploadFiles, submitEditRequest, submitNanoBananaRequest, submitVeo31Request } from './services/falService';
+import { uploadFiles, uploadFile, submitEditRequest, submitNanoBananaRequest, submitVeo31Request, submitWanRequest, submitWan25Request } from './services/falService';
 import { fetchHistory, addHistoryItem, deleteHistoryItem } from './services/historyService';
 import ImageUpload from './components/ImageUpload';
 import Sidebar from './components/Sidebar';
@@ -928,7 +928,7 @@ function Veo31Panel({ state, setState, onGenerationComplete }) {
 
               <div>
                 <Label>Reference Images</Label>
-                <ImageUpload images={images} setImages={setImages} disabled={isProcessing} />
+                <ImageUpload onImagesChange={setImages} maxImages={10} />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -1077,6 +1077,755 @@ function Veo31Panel({ state, setState, onGenerationComplete }) {
   );
 }
 
+function WanPanel({ state, setState, onGenerationComplete }) {
+  const {
+    prompt,
+    images,
+    enableLogs,
+    negativePrompt,
+    imageSize,
+    numImages,
+    enablePromptExpansion,
+    seed,
+    enableSafetyChecker,
+    status,
+    logs,
+    result,
+    isProcessing,
+    uploadProgress
+  } = state;
+
+  const setPrompt = (value) => setState(prev => ({ ...prev, prompt: value }));
+  const setImages = (value) => setState(prev => ({ ...prev, images: value }));
+  const setEnableLogs = (value) => setState(prev => ({ ...prev, enableLogs: value }));
+  const setNegativePrompt = (value) => setState(prev => ({ ...prev, negativePrompt: value }));
+  const setImageSize = (value) => setState(prev => ({ ...prev, imageSize: value }));
+  const setNumImages = (value) => setState(prev => ({ ...prev, numImages: value }));
+  const setEnablePromptExpansion = (value) => setState(prev => ({ ...prev, enablePromptExpansion: value }));
+  const setSeed = (value) => setState(prev => ({ ...prev, seed: value }));
+  const setEnableSafetyChecker = (value) => setState(prev => ({ ...prev, enableSafetyChecker: value }));
+  const setStatus = (value) => setState(prev => ({ ...prev, status: value }));
+  const setLogs = (value) => setState(prev => ({ ...prev, logs: typeof value === 'function' ? value(prev.logs) : value }));
+  const setResult = (value) => setState(prev => ({ ...prev, result: value }));
+  const setIsProcessing = (value) => setState(prev => ({ ...prev, isProcessing: value }));
+  const setUploadProgress = (value) => setState(prev => ({ ...prev, uploadProgress: value }));
+
+  const addLog = (message) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setLogs((prev) => [...prev, { timestamp, message }]);
+  };
+
+  const handleGirlSelect = (girl) => {
+    if (girl) {
+      const girlImage = {
+        id: `girl-${girl.id}-${Date.now()}`,
+        file: null,
+        preview: girl.image_url,
+        name: girl.name,
+        isFromUrl: true
+      };
+      setImages((prev) => [...prev, girlImage]);
+
+      if (girl.default_prompt) {
+        const currentPrompt = prompt.trim();
+        const newPrompt = currentPrompt
+          ? `${girl.default_prompt}\n\n${currentPrompt}`
+          : girl.default_prompt;
+        setPrompt(newPrompt);
+      }
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    setStatus('');
+    setLogs([]);
+    setResult(null);
+
+    if (!prompt.trim()) {
+      setStatus('ERROR: Please enter a prompt');
+      return;
+    }
+
+    if (images.length === 0) {
+      setStatus('ERROR: Please upload at least one reference image (1-3 images)');
+      return;
+    }
+
+    if (images.length > 3) {
+      setStatus('ERROR: Maximum 3 reference images allowed');
+      return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+      setStatus('Uploading images...');
+      if (enableLogs) addLog('Starting image uploads...');
+
+      const urlImages = images.filter(img => img.isFromUrl).map(img => img.preview);
+      const fileImages = images.filter(img => !img.isFromUrl);
+
+      let uploadedUrls = [];
+      if (fileImages.length > 0) {
+        const imageFiles = fileImages.map((img) => img.file);
+        uploadedUrls = await uploadFiles(imageFiles, (current, total) => {
+          setUploadProgress({ current, total });
+          if (enableLogs) addLog(`Uploaded ${current}/${total} images`);
+        });
+      }
+
+      const imageUrls = [...urlImages, ...uploadedUrls];
+      setUploadProgress(null);
+
+      setStatus('Submitting to Wan v2.6...');
+      if (enableLogs) addLog('Submitting edit request...');
+
+      const result = await submitWanRequest({
+        prompt,
+        imageUrls,
+        negativePrompt,
+        imageSize,
+        numImages,
+        enablePromptExpansion,
+        seed: seed ? parseInt(seed) : null,
+        enableSafetyChecker,
+        logs: enableLogs,
+        onQueueUpdate: (update) => {
+          if (update.status === 'IN_PROGRESS') {
+            setStatus(`Processing: ${update.logs?.[update.logs.length - 1]?.message || 'Working...'}`);
+            if (enableLogs && update.logs) {
+              update.logs.forEach(log => addLog(log.message));
+            }
+          } else if (update.status === 'IN_QUEUE') {
+            setStatus(`In queue (position: ${update.position || '?'})`);
+            if (enableLogs) addLog('Request queued');
+          }
+        }
+      });
+
+      setResult(result);
+      setStatus('SUCCESS: Images generated successfully!');
+      if (enableLogs) addLog('Generation complete');
+
+      onGenerationComplete({
+        prompt,
+        images,
+        negativePrompt,
+        imageSize,
+        numImages,
+        enablePromptExpansion,
+        seed,
+        enableSafetyChecker
+      }, result);
+
+    } catch (error) {
+      setStatus(`ERROR: ${error.message}`);
+      if (enableLogs) addLog(`Error: ${error.message}`);
+    } finally {
+      setIsProcessing(false);
+      setUploadProgress(null);
+    }
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+      {/* Left Panel - Settings */}
+      <div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Wan v2.6 Image-to-Image</CardTitle>
+            <CardDescription>Upload reference images and configure generation</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="wan-prompt">Prompt</Label>
+                <Textarea
+                  id="wan-prompt"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="Describe the image you want to generate (max 2000 characters)..."
+                  rows={3}
+                  disabled={isProcessing}
+                />
+              </div>
+
+              <GirlSelector onSelect={handleGirlSelect} disabled={isProcessing} />
+
+              <div>
+                <Label htmlFor="wan-negative-prompt">Negative Prompt (Optional)</Label>
+                <Textarea
+                  id="wan-negative-prompt"
+                  value={negativePrompt}
+                  onChange={(e) => setNegativePrompt(e.target.value)}
+                  placeholder="Content to avoid in generated image (max 500 characters)..."
+                  rows={2}
+                  disabled={isProcessing}
+                />
+              </div>
+
+              <div>
+                <Label>Reference Images (1-3 required)</Label>
+                <ImageUpload onImagesChange={setImages} maxImages={3} />
+                <p className="text-xs text-muted-foreground mt-1">Order matters: reference as 'image 1', 'image 2', etc.</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="wan-image-size">Image Size</Label>
+                  <Select value={imageSize} onValueChange={setImageSize} disabled={isProcessing}>
+                    <SelectTrigger id="wan-image-size">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="square_hd">Square HD (1280×1280)</SelectItem>
+                      <SelectItem value="square">Square (1024×1024)</SelectItem>
+                      <SelectItem value="portrait_4_3">Portrait 4:3</SelectItem>
+                      <SelectItem value="portrait_16_9">Portrait 16:9</SelectItem>
+                      <SelectItem value="landscape_4_3">Landscape 4:3</SelectItem>
+                      <SelectItem value="landscape_16_9">Landscape 16:9</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="wan-num-images">Number of Images</Label>
+                  <Select value={numImages.toString()} onValueChange={(v) => setNumImages(parseInt(v))} disabled={isProcessing}>
+                    <SelectTrigger id="wan-num-images">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1</SelectItem>
+                      <SelectItem value="2">2</SelectItem>
+                      <SelectItem value="3">3</SelectItem>
+                      <SelectItem value="4">4</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="wan-seed">Seed (Optional)</Label>
+                <input
+                  id="wan-seed"
+                  type="number"
+                  min="0"
+                  max="2147483647"
+                  value={seed}
+                  onChange={(e) => setSeed(e.target.value)}
+                  placeholder="Leave empty for random"
+                  disabled={isProcessing}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="wan-prompt-expansion"
+                  checked={enablePromptExpansion}
+                  onCheckedChange={setEnablePromptExpansion}
+                  disabled={isProcessing}
+                />
+                <Label htmlFor="wan-prompt-expansion">Enable Prompt Expansion (LLM optimization, +3-4s)</Label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="wan-safety-checker"
+                  checked={enableSafetyChecker}
+                  onCheckedChange={setEnableSafetyChecker}
+                  disabled={isProcessing}
+                />
+                <Label htmlFor="wan-safety-checker">Enable Safety Checker</Label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="wan-logs"
+                  checked={enableLogs}
+                  onCheckedChange={setEnableLogs}
+                  disabled={isProcessing}
+                />
+                <Label htmlFor="wan-logs">Enable Progress Logs</Label>
+              </div>
+
+              <Button type="submit" className="w-full" disabled={isProcessing}>
+                {isProcessing ? 'Processing...' : 'Generate Images'}
+              </Button>
+
+              {uploadProgress && (
+                <p className="text-sm text-muted-foreground">
+                  Uploading: {uploadProgress.current}/{uploadProgress.total}
+                </p>
+              )}
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Right Panel - Logs and Results */}
+      <div className="space-y-6">
+        {status && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Status</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className={status.startsWith('ERROR') ? 'text-destructive' : status.startsWith('SUCCESS') ? 'text-green-600' : ''}>
+                {status}
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {enableLogs && logs.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Logs</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-1 max-h-60 overflow-y-auto">
+                {logs.map((log, index) => (
+                  <div key={index} className="log-entry">
+                    <span className="log-timestamp">{log.timestamp}</span>
+                    <span>{log.message}</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {result && result.images && result.images.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Generated Images</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 gap-4">
+                {result.images.map((image, index) => (
+                  <div key={index}>
+                    <img
+                      src={image.url}
+                      alt={`Generated ${index + 1}`}
+                      className="w-full rounded-md"
+                    />
+                    <Button asChild className="w-full mt-2">
+                      <a href={image.url} download target="_blank" rel="noopener noreferrer">
+                        Download Image {index + 1}
+                      </a>
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Wan25Panel({ state, setState, onGenerationComplete }) {
+  const {
+    prompt,
+    image,
+    enableLogs,
+    resolution,
+    duration,
+    audioFile,
+    negativePrompt,
+    enablePromptExpansion,
+    seed,
+    enableSafetyChecker,
+    status,
+    logs,
+    result,
+    isProcessing,
+    uploadProgress
+  } = state;
+
+  const setPrompt = (value) => setState(prev => ({ ...prev, prompt: value }));
+  const setImage = (value) => setState(prev => ({ ...prev, image: value }));
+  const setEnableLogs = (value) => setState(prev => ({ ...prev, enableLogs: value }));
+  const setResolution = (value) => setState(prev => ({ ...prev, resolution: value }));
+  const setDuration = (value) => setState(prev => ({ ...prev, duration: value }));
+  const setAudioFile = (value) => setState(prev => ({ ...prev, audioFile: value }));
+  const setNegativePrompt = (value) => setState(prev => ({ ...prev, negativePrompt: value }));
+  const setEnablePromptExpansion = (value) => setState(prev => ({ ...prev, enablePromptExpansion: value }));
+  const setSeed = (value) => setState(prev => ({ ...prev, seed: value }));
+  const setEnableSafetyChecker = (value) => setState(prev => ({ ...prev, enableSafetyChecker: value }));
+  const setStatus = (value) => setState(prev => ({ ...prev, status: value }));
+  const setLogs = (value) => setState(prev => ({ ...prev, logs: typeof value === 'function' ? value(prev.logs) : value }));
+  const setResult = (value) => setState(prev => ({ ...prev, result: value }));
+  const setIsProcessing = (value) => setState(prev => ({ ...prev, isProcessing: value }));
+  const setUploadProgress = (value) => setState(prev => ({ ...prev, uploadProgress: value }));
+
+  const addLog = (message) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setLogs((prev) => [...prev, { timestamp, message }]);
+  };
+
+  const handleGirlSelect = (girl) => {
+    if (girl) {
+      // Set girl's image as the first frame
+      setImage({
+        file: null,
+        preview: girl.image_url,
+        name: girl.name,
+        isFromUrl: true
+      });
+
+      // Prepend default prompt if exists
+      if (girl.default_prompt) {
+        const currentPrompt = prompt.trim();
+        const newPrompt = currentPrompt
+          ? `${girl.default_prompt}\n\n${currentPrompt}`
+          : girl.default_prompt;
+        setPrompt(newPrompt);
+      }
+    }
+  };
+
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setImage({
+        file,
+        preview: URL.createObjectURL(file),
+        name: file.name,
+        isFromUrl: false
+      });
+    }
+  };
+
+  const handleAudioChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setAudioFile(file);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    setStatus('');
+    setLogs([]);
+    setResult(null);
+
+    if (!prompt.trim()) {
+      setStatus('ERROR: Please enter a motion prompt');
+      return;
+    }
+
+    if (!image) {
+      setStatus('ERROR: Please upload a first frame image');
+      return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+      // Upload image if it's a file
+      let imageUrl = image.preview;
+      if (!image.isFromUrl && image.file) {
+        setStatus('Uploading image...');
+        if (enableLogs) addLog('Uploading first frame image...');
+        imageUrl = await uploadFile(image.file);
+      }
+
+      // Upload audio if provided
+      let audioUrl = null;
+      if (audioFile) {
+        setStatus('Uploading audio...');
+        if (enableLogs) addLog('Uploading audio file...');
+        audioUrl = await uploadFile(audioFile);
+      }
+
+      setStatus('Submitting to Wan 2.5...');
+      if (enableLogs) addLog('Submitting image-to-video request...');
+
+      const result = await submitWan25Request({
+        prompt,
+        imageUrl,
+        resolution,
+        duration,
+        audioUrl,
+        negativePrompt,
+        enablePromptExpansion,
+        seed: seed ? parseInt(seed) : null,
+        enableSafetyChecker,
+        logs: enableLogs,
+        onQueueUpdate: (update) => {
+          if (update.status === 'IN_PROGRESS') {
+            setStatus(`Processing: ${update.logs?.[update.logs.length - 1]?.message || 'Working...'}`);
+            if (enableLogs && update.logs) {
+              update.logs.forEach(log => addLog(log.message));
+            }
+          } else if (update.status === 'IN_QUEUE') {
+            setStatus(`In queue (position: ${update.position || '?'})`);
+            if (enableLogs) addLog('Request queued');
+          }
+        }
+      });
+
+      setResult(result);
+      setStatus('SUCCESS: Video generated successfully!');
+      if (enableLogs) addLog('Generation complete');
+
+      onGenerationComplete({
+        prompt,
+        image,
+        resolution,
+        duration,
+        audioFile: audioFile?.name || null,
+        negativePrompt,
+        enablePromptExpansion,
+        seed,
+        enableSafetyChecker
+      }, result);
+
+    } catch (error) {
+      setStatus(`ERROR: ${error.message}`);
+      if (enableLogs) addLog(`Error: ${error.message}`);
+    } finally {
+      setIsProcessing(false);
+      setUploadProgress(null);
+    }
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+      {/* Left Panel - Settings */}
+      <div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Wan 2.5 Image-to-Video</CardTitle>
+            <CardDescription>Upload a first frame image and describe the motion</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="wan25-prompt">Motion Prompt</Label>
+                <Textarea
+                  id="wan25-prompt"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="Describe the desired motion (max 800 characters)..."
+                  rows={3}
+                  disabled={isProcessing}
+                />
+              </div>
+
+              <GirlSelector onSelect={handleGirlSelect} disabled={isProcessing} />
+
+              <div>
+                <Label htmlFor="wan25-negative-prompt">Negative Prompt (Optional)</Label>
+                <Textarea
+                  id="wan25-negative-prompt"
+                  value={negativePrompt}
+                  onChange={(e) => setNegativePrompt(e.target.value)}
+                  placeholder="Content to avoid (max 500 characters)..."
+                  rows={2}
+                  disabled={isProcessing}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="wan25-image">First Frame Image (Required)</Label>
+                <input
+                  id="wan25-image"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  disabled={isProcessing}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+                <p className="text-xs text-muted-foreground mt-1">360-2000px, max 10MB (JPEG/PNG/BMP/WEBP)</p>
+                {image && (
+                  <div className="mt-4">
+                    <img
+                      src={image.preview}
+                      alt="First frame preview"
+                      className="w-full max-w-xs rounded-md"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <Label htmlFor="wan25-audio">Background Audio (Optional)</Label>
+                <input
+                  id="wan25-audio"
+                  type="file"
+                  accept="audio/wav,audio/mpeg,audio/mp3"
+                  onChange={handleAudioChange}
+                  disabled={isProcessing}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+                <p className="text-xs text-muted-foreground mt-1">WAV/MP3, 3-30 seconds, max 15MB</p>
+                {audioFile && (
+                  <p className="text-sm mt-2">Selected: {audioFile.name}</p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="wan25-resolution">Resolution</Label>
+                  <Select value={resolution} onValueChange={setResolution} disabled={isProcessing}>
+                    <SelectTrigger id="wan25-resolution">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="480p">480p ($0.05/sec)</SelectItem>
+                      <SelectItem value="720p">720p ($0.10/sec)</SelectItem>
+                      <SelectItem value="1080p">1080p ($0.15/sec)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="wan25-duration">Duration</Label>
+                  <Select value={duration} onValueChange={setDuration} disabled={isProcessing}>
+                    <SelectTrigger id="wan25-duration">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="5">5 seconds</SelectItem>
+                      <SelectItem value="10">10 seconds</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="wan25-seed">Seed (Optional)</Label>
+                <input
+                  id="wan25-seed"
+                  type="number"
+                  min="0"
+                  max="2147483647"
+                  value={seed}
+                  onChange={(e) => setSeed(e.target.value)}
+                  placeholder="Leave empty for random"
+                  disabled={isProcessing}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="wan25-prompt-expansion"
+                  checked={enablePromptExpansion}
+                  onCheckedChange={setEnablePromptExpansion}
+                  disabled={isProcessing}
+                />
+                <Label htmlFor="wan25-prompt-expansion">Enable Prompt Expansion (LLM rewriting)</Label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="wan25-safety-checker"
+                  checked={enableSafetyChecker}
+                  onCheckedChange={setEnableSafetyChecker}
+                  disabled={isProcessing}
+                />
+                <Label htmlFor="wan25-safety-checker">Enable Safety Checker</Label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="wan25-logs"
+                  checked={enableLogs}
+                  onCheckedChange={setEnableLogs}
+                  disabled={isProcessing}
+                />
+                <Label htmlFor="wan25-logs">Enable Progress Logs</Label>
+              </div>
+
+              <Button type="submit" className="w-full" disabled={isProcessing}>
+                {isProcessing ? 'Processing...' : 'Generate Video'}
+              </Button>
+
+              {uploadProgress && (
+                <p className="text-sm text-muted-foreground">
+                  {uploadProgress}
+                </p>
+              )}
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Right Panel - Logs and Results */}
+      <div className="space-y-6">
+        {status && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Status</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className={status.startsWith('ERROR') ? 'text-destructive' : status.startsWith('SUCCESS') ? 'text-green-600' : ''}>
+                {status}
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {enableLogs && logs.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Logs</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-1 max-h-60 overflow-y-auto">
+                {logs.map((log, index) => (
+                  <div key={index} className="log-entry">
+                    <span className="log-timestamp">{log.timestamp}</span>
+                    <span>{log.message}</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {result && result.video && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Generated Video</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <video
+                src={result.video.url}
+                controls
+                className="w-full rounded-md"
+              >
+                Your browser does not support the video tag.
+              </video>
+              {result.actual_prompt && (
+                <div className="mt-4">
+                  <Label>Actual Prompt Used:</Label>
+                  <p className="text-sm text-muted-foreground mt-1">{result.actual_prompt}</p>
+                </div>
+              )}
+              <div className="mt-4">
+                <Button asChild className="w-full">
+                  <a href={result.video.url} download target="_blank" rel="noopener noreferrer">
+                    Download Video
+                  </a>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [activeView, setActiveView] = useState('generate');
   const [activeTab, setActiveTab] = useState('seedream');
@@ -1143,6 +1892,43 @@ function App() {
     uploadProgress: null
   });
 
+  // State for Wan v2.6 tab
+  const [wanState, setWanState] = useState({
+    prompt: '',
+    images: [],
+    enableLogs: true,
+    negativePrompt: '',
+    imageSize: 'square_hd',
+    numImages: 1,
+    enablePromptExpansion: true,
+    seed: '',
+    enableSafetyChecker: true,
+    status: '',
+    logs: [],
+    result: null,
+    isProcessing: false,
+    uploadProgress: null
+  });
+
+  // State for Wan 2.5 tab
+  const [wan25State, setWan25State] = useState({
+    prompt: '',
+    image: null,
+    enableLogs: true,
+    resolution: '1080p',
+    duration: '5',
+    audioFile: null,
+    negativePrompt: '',
+    enablePromptExpansion: true,
+    seed: '',
+    enableSafetyChecker: true,
+    status: '',
+    logs: [],
+    result: null,
+    isProcessing: false,
+    uploadProgress: null
+  });
+
   // Add to history when generation completes
   const addToHistory = async (type, settings, result) => {
     const timestamp = new Date().toLocaleString();
@@ -1200,6 +1986,32 @@ function App() {
         autoFix: item.settings.autoFix,
         result: item.result
       }));
+    } else if (item.type === 'wan') {
+      setWanState(prev => ({
+        ...prev,
+        prompt: item.settings.prompt,
+        images: item.settings.images,
+        negativePrompt: item.settings.negativePrompt,
+        imageSize: item.settings.imageSize,
+        numImages: item.settings.numImages,
+        enablePromptExpansion: item.settings.enablePromptExpansion,
+        seed: item.settings.seed,
+        enableSafetyChecker: item.settings.enableSafetyChecker,
+        result: item.result
+      }));
+    } else if (item.type === 'wan25') {
+      setWan25State(prev => ({
+        ...prev,
+        prompt: item.settings.prompt,
+        image: item.settings.image,
+        resolution: item.settings.resolution,
+        duration: item.settings.duration,
+        negativePrompt: item.settings.negativePrompt,
+        enablePromptExpansion: item.settings.enablePromptExpansion,
+        seed: item.settings.seed,
+        enableSafetyChecker: item.settings.enableSafetyChecker,
+        result: item.result
+      }));
     }
   };
 
@@ -1226,10 +2038,12 @@ function App() {
               </div>
 
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full max-w-2xl grid-cols-3">
+          <TabsList className="grid w-full max-w-4xl grid-cols-5">
             <TabsTrigger value="seedream">SeeD Dream v4.5</TabsTrigger>
             <TabsTrigger value="nanobanana">Nano Banana Pro</TabsTrigger>
             <TabsTrigger value="veo31">Veo 3.1</TabsTrigger>
+            <TabsTrigger value="wan">Wan v2.6</TabsTrigger>
+            <TabsTrigger value="wan25">Wan 2.5</TabsTrigger>
           </TabsList>
 
           <TabsContent value="seedream">
@@ -1253,6 +2067,22 @@ function App() {
               state={veo31State}
               setState={setVeo31State}
               onGenerationComplete={(settings, result) => addToHistory('veo31', settings, result)}
+            />
+          </TabsContent>
+
+          <TabsContent value="wan">
+            <WanPanel
+              state={wanState}
+              setState={setWanState}
+              onGenerationComplete={(settings, result) => addToHistory('wan', settings, result)}
+            />
+          </TabsContent>
+
+          <TabsContent value="wan25">
+            <Wan25Panel
+              state={wan25State}
+              setState={setWan25State}
+              onGenerationComplete={(settings, result) => addToHistory('wan25', settings, result)}
             />
           </TabsContent>
         </Tabs>
@@ -1311,7 +2141,7 @@ function App() {
                     </Button>
                     <div className="mt-2 space-y-1">
                       <div className="text-xs font-medium text-primary">
-                        {item.type === 'seedream' ? 'SeeD Dream' : item.type === 'nanobanana' ? 'Nano Banana' : 'Veo 3.1'}
+                        {item.type === 'seedream' ? 'SeeD Dream' : item.type === 'nanobanana' ? 'Nano Banana' : item.type === 'veo31' ? 'Veo 3.1' : item.type === 'wan' ? 'Wan v2.6' : 'Wan 2.5'}
                       </div>
                       <div className="text-xs text-muted-foreground line-clamp-2">
                         {item.settings.prompt}
