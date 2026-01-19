@@ -1,0 +1,279 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.container {
+    max-width: 900px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+    padding: 40px;
+}
+
+header {
+    text-align: center;
+    margin-bottom: 40px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid #f0f0f0;
+}
+
+h1 {
+    color: #333;
+    font-size: 32px;
+    margin-bottom: 10px;
+}
+
+.subtitle {
+    color: #666;
+    font-size: 16px;
+}
+
+h2 {
+    color: #444;
+    font-size: 22px;
+    margin-bottom: 20px;
+}
+
+.config-section,
+.input-section,
+.status-section,
+.logs-section,
+.result-section {
+    margin-bottom: 30px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+label {
+    display: block;
+    font-weight: 600;
+    color: #555;
+    margin-bottom: 8px;
+}
+
+input[type="password"],
+input[type="url"],
+textarea {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+    transition: border-color 0.3s;
+}
+
+input[type="password"]:focus,
+input[type="url"]:focus,
+textarea:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+textarea {
+    resize: vertical;
+}
+
+small {
+    display: block;
+    color: #888;
+    font-size: 12px;
+    margin-top: 5px;
+}
+
+small a {
+    color: #667eea;
+    text-decoration: none;
+}
+
+small a:hover {
+    text-decoration: underline;
+}
+
+.image-input-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.image-label {
+    font-weight: 600;
+    color: #555;
+    min-width: 70px;
+}
+
+.image-url {
+    flex: 1;
+}
+
+.btn-primary,
+.btn-secondary,
+.btn-remove {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    width: 100%;
+    font-size: 16px;
+    padding: 14px;
+}
+
+.btn-primary:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+}
+
+.btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    background: #f5f5f5;
+    color: #555;
+    margin-top: 10px;
+}
+
+.btn-secondary:hover {
+    background: #e0e0e0;
+}
+
+.btn-remove {
+    background: #ff4757;
+    color: white;
+    padding: 8px 16px;
+}
+
+.btn-remove:hover {
+    background: #ee5a6f;
+}
+
+input[type="checkbox"] {
+    width: auto;
+    margin-right: 8px;
+}
+
+.status-section {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 8px;
+    border-left: 4px solid #667eea;
+}
+
+#statusContent {
+    color: #555;
+    font-weight: 500;
+}
+
+.logs-section {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 8px;
+}
+
+#logsContent {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    color: #333;
+    max-height: 300px;
+    overflow-y: auto;
+    background: white;
+    padding: 15px;
+    border-radius: 4px;
+    border: 1px solid #e0e0e0;
+}
+
+.log-entry {
+    padding: 5px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.log-entry:last-child {
+    border-bottom: none;
+}
+
+.result-section {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 8px;
+}
+
+.result-image {
+    width: 100%;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    margin-bottom: 15px;
+}
+
+.result-info {
+    background: white;
+    padding: 15px;
+    border-radius: 6px;
+    margin-top: 15px;
+}
+
+.result-info p {
+    margin-bottom: 8px;
+    color: #555;
+}
+
+.result-info strong {
+    color: #333;
+}
+
+.error {
+    background: #fff5f5;
+    border-left: 4px solid #ff4757;
+    color: #c23616;
+    padding: 15px;
+    border-radius: 4px;
+    margin-top: 10px;
+}
+
+.success {
+    background: #f0fff4;
+    border-left: 4px solid #38a169;
+    color: #2f855a;
+    padding: 15px;
+    border-radius: 4px;
+}
+
+@media (max-width: 768px) {
+    .container {
+        padding: 20px;
+    }
+
+    h1 {
+        font-size: 24px;
+    }
+
+    .image-input-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .image-label {
+        min-width: auto;
+    }
+}

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SeeD Dream v4.5 Edit - Image Editor</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>SeeD Dream v4.5 Image Editor</h1>
+            <p class="subtitle">AI-powered image editing using ByteDance's SeeD Dream API</p>
+        </header>
+
+        <div class="config-section">
+            <h2>API Configuration</h2>
+            <div class="form-group">
+                <label for="apiKey">FAL API Key:</label>
+                <input type="password" id="apiKey" placeholder="Enter your fal.ai API key">
+                <small>Get your API key from <a href="https://fal.ai/dashboard/keys" target="_blank">fal.ai/dashboard/keys</a></small>
+            </div>
+        </div>
+
+        <div class="input-section">
+            <h2>Edit Request</h2>
+
+            <div class="form-group">
+                <label for="prompt">Editing Prompt:</label>
+                <textarea id="prompt" rows="4" placeholder="Describe the edit you want to make (e.g., 'Replace the product in Figure 1 with that in Figure 2')"></textarea>
+                <small>Reference images as Figure 1, Figure 2, etc. in your prompt</small>
+            </div>
+
+            <div class="form-group">
+                <label>Reference Images (up to 10):</label>
+                <div id="imageInputs">
+                    <div class="image-input-row">
+                        <span class="image-label">Figure 1:</span>
+                        <input type="url" class="image-url" placeholder="https://example.com/image1.jpg">
+                        <button type="button" class="btn-remove" onclick="removeImageInput(this)">Remove</button>
+                    </div>
+                </div>
+                <button type="button" class="btn-secondary" onclick="addImageInput()">+ Add Image</button>
+            </div>
+
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="enableLogs" checked>
+                    Enable progress logs
+                </label>
+            </div>
+
+            <button id="submitBtn" class="btn-primary" onclick="submitRequest()">Generate Edited Image</button>
+        </div>
+
+        <div id="statusSection" class="status-section" style="display: none;">
+            <h2>Status</h2>
+            <div id="statusContent"></div>
+        </div>
+
+        <div id="logsSection" class="logs-section" style="display: none;">
+            <h2>Progress Logs</h2>
+            <div id="logsContent"></div>
+        </div>
+
+        <div id="resultSection" class="result-section" style="display: none;">
+            <h2>Result</h2>
+            <div id="resultContent"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@fal-ai/client@1.0.0/dist/index.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
