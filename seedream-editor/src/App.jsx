@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { isApiKeyConfigured } from './services/falService';
-import { uploadFiles, uploadFile, submitEditRequest, submitNanoBananaRequest, submitVeo31Request, submitWanRequest, submitWan25Request, submitFlux2ProRequest } from './services/falService';
+import { uploadFiles, uploadFile, submitEditRequest, submitNanoBananaRequest, submitVeo31Request, submitWanRequest, submitWan25Request, submitFlux2ProRequest, submitGemini3Request } from './services/falService';
 import { fetchHistory, addHistoryItem, deleteHistoryItem } from './services/historyService';
 import ImageUpload from './components/ImageUpload';
 import Sidebar from './components/Sidebar';
@@ -2168,6 +2168,399 @@ function Flux2ProPanel({ state, setState, onGenerationComplete }) {
   );
 }
 
+function Gemini3Panel({ state, setState, onGenerationComplete }) {
+  const {
+    prompt,
+    images,
+    enableLogs,
+    numImages,
+    seed,
+    aspectRatio,
+    outputFormat,
+    resolution,
+    limitGenerations,
+    enableWebSearch,
+    status,
+    logs,
+    result,
+    isProcessing,
+    uploadProgress
+  } = state;
+
+  const setPrompt = (value) => setState(prev => ({ ...prev, prompt: value }));
+  const setImages = (value) => setState(prev => ({ ...prev, images: value }));
+  const setEnableLogs = (value) => setState(prev => ({ ...prev, enableLogs: value }));
+  const setNumImages = (value) => setState(prev => ({ ...prev, numImages: value }));
+  const setSeed = (value) => setState(prev => ({ ...prev, seed: value }));
+  const setAspectRatio = (value) => setState(prev => ({ ...prev, aspectRatio: value }));
+  const setOutputFormat = (value) => setState(prev => ({ ...prev, outputFormat: value }));
+  const setResolution = (value) => setState(prev => ({ ...prev, resolution: value }));
+  const setLimitGenerations = (value) => setState(prev => ({ ...prev, limitGenerations: value }));
+  const setEnableWebSearch = (value) => setState(prev => ({ ...prev, enableWebSearch: value }));
+  const setStatus = (value) => setState(prev => ({ ...prev, status: value }));
+  const setLogs = (value) => setState(prev => ({ ...prev, logs: typeof value === 'function' ? value(prev.logs) : value }));
+  const setResult = (value) => setState(prev => ({ ...prev, result: value }));
+  const setIsProcessing = (value) => setState(prev => ({ ...prev, isProcessing: value }));
+  const setUploadProgress = (value) => setState(prev => ({ ...prev, uploadProgress: value }));
+
+  const addLog = (message) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setLogs((prev) => [...prev, { timestamp, message }]);
+  };
+
+  const handleGirlSelect = (girl) => {
+    if (girl) {
+      const girlImage = {
+        id: `girl-${girl.id}-${Date.now()}`,
+        file: null,
+        preview: girl.image_url,
+        name: girl.name,
+        isFromUrl: true
+      };
+      setImages((prev) => [...prev, girlImage]);
+
+      if (girl.default_prompt) {
+        const currentPrompt = prompt.trim();
+        const newPrompt = currentPrompt
+          ? `${girl.default_prompt}\n\n${currentPrompt}`
+          : girl.default_prompt;
+        setPrompt(newPrompt);
+      }
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    setStatus('');
+    setLogs([]);
+    setResult(null);
+
+    if (!prompt.trim()) {
+      setStatus('ERROR: Please enter an editing prompt');
+      return;
+    }
+
+    if (prompt.length < 3 || prompt.length > 50000) {
+      setStatus('ERROR: Prompt must be between 3 and 50,000 characters');
+      return;
+    }
+
+    if (images.length === 0) {
+      setStatus('ERROR: Please upload at least one input image');
+      return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+      setStatus('Uploading images...');
+      if (enableLogs) addLog('Starting image uploads...');
+
+      const urlImages = images.filter(img => img.isFromUrl).map(img => img.preview);
+      const fileImages = images.filter(img => !img.isFromUrl);
+
+      let uploadedUrls = [];
+      if (fileImages.length > 0) {
+        const imageFiles = fileImages.map((img) => img.file);
+        uploadedUrls = await uploadFiles(imageFiles, (current, total) => {
+          setUploadProgress({ current, total });
+          if (enableLogs) addLog(`Uploaded ${current}/${total} images`);
+        });
+      }
+
+      const imageUrls = [...urlImages, ...uploadedUrls];
+      setUploadProgress(null);
+
+      setStatus('Submitting to Gemini 3 Pro...');
+      if (enableLogs) addLog('Submitting edit request...');
+
+      const result = await submitGemini3Request({
+        prompt,
+        imageUrls,
+        numImages,
+        seed: seed ? parseInt(seed) : null,
+        aspectRatio,
+        outputFormat,
+        resolution,
+        limitGenerations,
+        enableWebSearch,
+        logs: enableLogs,
+        onQueueUpdate: (update) => {
+          if (update.status === 'IN_PROGRESS') {
+            setStatus(`Processing: ${update.logs?.[update.logs.length - 1]?.message || 'Working...'}`);
+            if (enableLogs && update.logs) {
+              update.logs.forEach(log => addLog(log.message));
+            }
+          } else if (update.status === 'IN_QUEUE') {
+            setStatus(`In queue (position: ${update.position || '?'})`);
+            if (enableLogs) addLog('Request queued');
+          }
+        }
+      });
+
+      setResult(result);
+      setStatus('SUCCESS: Images edited successfully!');
+      if (enableLogs) addLog('Generation complete');
+
+      onGenerationComplete({
+        prompt,
+        images,
+        numImages,
+        seed,
+        aspectRatio,
+        outputFormat,
+        resolution,
+        limitGenerations,
+        enableWebSearch
+      }, result);
+
+    } catch (error) {
+      setStatus(`ERROR: ${error.message}`);
+      if (enableLogs) addLog(`Error: ${error.message}`);
+    } finally {
+      setIsProcessing(false);
+      setUploadProgress(null);
+    }
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+      {/* Left Panel - Settings */}
+      <div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Gemini 3 Pro Image Editor</CardTitle>
+            <CardDescription>Advanced image editing with Gemini 3 Pro</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="gemini-prompt">Editing Prompt</Label>
+                <Textarea
+                  id="gemini-prompt"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="Describe the edits you want to make (3-50,000 characters)..."
+                  rows={4}
+                  disabled={isProcessing}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  {prompt.length} / 50,000 characters
+                </p>
+              </div>
+
+              <GirlSelector onSelect={handleGirlSelect} disabled={isProcessing} />
+
+              <div>
+                <Label>Input Images</Label>
+                <ImageUpload onImagesChange={setImages} maxImages={10} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="gemini-num-images">Number of Images</Label>
+                  <Select value={numImages.toString()} onValueChange={(v) => setNumImages(parseInt(v))} disabled={isProcessing}>
+                    <SelectTrigger id="gemini-num-images">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1</SelectItem>
+                      <SelectItem value="2">2</SelectItem>
+                      <SelectItem value="3">3</SelectItem>
+                      <SelectItem value="4">4</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="gemini-resolution">Resolution</Label>
+                  <Select value={resolution} onValueChange={setResolution} disabled={isProcessing}>
+                    <SelectTrigger id="gemini-resolution">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1K">1K</SelectItem>
+                      <SelectItem value="2K">2K</SelectItem>
+                      <SelectItem value="4K">4K (2x price)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="gemini-aspect-ratio">Aspect Ratio</Label>
+                <Select value={aspectRatio} onValueChange={setAspectRatio} disabled={isProcessing}>
+                  <SelectTrigger id="gemini-aspect-ratio">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">Auto</SelectItem>
+                    <SelectItem value="21:9">21:9 (Ultra Wide)</SelectItem>
+                    <SelectItem value="16:9">16:9 (Wide)</SelectItem>
+                    <SelectItem value="3:2">3:2</SelectItem>
+                    <SelectItem value="4:3">4:3</SelectItem>
+                    <SelectItem value="5:4">5:4</SelectItem>
+                    <SelectItem value="1:1">1:1 (Square)</SelectItem>
+                    <SelectItem value="4:5">4:5</SelectItem>
+                    <SelectItem value="3:4">3:4</SelectItem>
+                    <SelectItem value="2:3">2:3</SelectItem>
+                    <SelectItem value="9:16">9:16 (Portrait)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="gemini-output-format">Output Format</Label>
+                <Select value={outputFormat} onValueChange={setOutputFormat} disabled={isProcessing}>
+                  <SelectTrigger id="gemini-output-format">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="jpeg">JPEG</SelectItem>
+                    <SelectItem value="png">PNG</SelectItem>
+                    <SelectItem value="webp">WebP</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="gemini-seed">Seed (Optional)</Label>
+                <input
+                  id="gemini-seed"
+                  type="number"
+                  min="0"
+                  max="2147483647"
+                  value={seed}
+                  onChange={(e) => setSeed(e.target.value)}
+                  placeholder="Leave empty for random"
+                  disabled={isProcessing}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="gemini-limit-generations"
+                  checked={limitGenerations}
+                  onCheckedChange={setLimitGenerations}
+                  disabled={isProcessing}
+                />
+                <Label htmlFor="gemini-limit-generations">Limit to 1 Generation per Prompt</Label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="gemini-web-search"
+                  checked={enableWebSearch}
+                  onCheckedChange={setEnableWebSearch}
+                  disabled={isProcessing}
+                />
+                <Label htmlFor="gemini-web-search">Enable Web Search</Label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="gemini-logs"
+                  checked={enableLogs}
+                  onCheckedChange={setEnableLogs}
+                  disabled={isProcessing}
+                />
+                <Label htmlFor="gemini-logs">Enable Progress Logs</Label>
+              </div>
+
+              <Button type="submit" className="w-full" disabled={isProcessing}>
+                {isProcessing ? 'Processing...' : 'Edit Images'}
+              </Button>
+
+              {uploadProgress && (
+                <p className="text-sm text-muted-foreground">
+                  Uploading: {uploadProgress.current}/{uploadProgress.total}
+                </p>
+              )}
+
+              <p className="text-xs text-muted-foreground">
+                Pricing: $0.15 per image; 4K outputs charged at 2x rate
+              </p>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Right Panel - Logs and Results */}
+      <div className="space-y-6">
+        {status && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Status</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className={status.startsWith('ERROR') ? 'text-destructive' : status.startsWith('SUCCESS') ? 'text-green-600' : ''}>
+                {status}
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {enableLogs && logs.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Logs</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-1 max-h-60 overflow-y-auto">
+                {logs.map((log, index) => (
+                  <div key={index} className="log-entry">
+                    <span className="log-timestamp">{log.timestamp}</span>
+                    <span>{log.message}</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {result && result.images && result.images.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Edited Images</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 gap-4">
+                {result.images.map((image, index) => (
+                  <div key={index}>
+                    <img
+                      src={image.url}
+                      alt={`Edited ${index + 1}`}
+                      className="w-full rounded-md"
+                    />
+                    {image.width && image.height && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {image.width} × {image.height}
+                      </p>
+                    )}
+                    <Button asChild className="w-full mt-2">
+                      <a href={image.url} download target="_blank" rel="noopener noreferrer">
+                        Download Image {index + 1}
+                      </a>
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              {result.description && (
+                <div className="mt-4">
+                  <Label>Description:</Label>
+                  <p className="text-sm text-muted-foreground mt-1">{result.description}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [activeView, setActiveView] = useState('generate');
   const [activeTab, setActiveTab] = useState('seedream');
@@ -2288,6 +2681,25 @@ function App() {
     uploadProgress: null
   });
 
+  // State for Gemini 3 Pro tab
+  const [gemini3State, setGemini3State] = useState({
+    prompt: '',
+    images: [],
+    enableLogs: true,
+    numImages: 1,
+    seed: '',
+    aspectRatio: 'auto',
+    outputFormat: 'png',
+    resolution: '1K',
+    limitGenerations: false,
+    enableWebSearch: false,
+    status: '',
+    logs: [],
+    result: null,
+    isProcessing: false,
+    uploadProgress: null
+  });
+
   // Add to history when generation completes
   const addToHistory = async (type, settings, result) => {
     const timestamp = new Date().toLocaleString();
@@ -2383,6 +2795,20 @@ function App() {
         outputFormat: item.settings.outputFormat,
         result: item.result
       }));
+    } else if (item.type === 'gemini3') {
+      setGemini3State(prev => ({
+        ...prev,
+        prompt: item.settings.prompt,
+        images: item.settings.images,
+        numImages: item.settings.numImages,
+        seed: item.settings.seed,
+        aspectRatio: item.settings.aspectRatio,
+        outputFormat: item.settings.outputFormat,
+        resolution: item.settings.resolution,
+        limitGenerations: item.settings.limitGenerations,
+        enableWebSearch: item.settings.enableWebSearch,
+        result: item.result
+      }));
     }
   };
 
@@ -2409,13 +2835,14 @@ function App() {
               </div>
 
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full max-w-5xl grid-cols-6">
+          <TabsList className="grid w-full max-w-5xl grid-cols-7">
             <TabsTrigger value="seedream">SeeD Dream v4.5</TabsTrigger>
             <TabsTrigger value="nanobanana">Nano Banana Pro</TabsTrigger>
             <TabsTrigger value="veo31">Veo 3.1</TabsTrigger>
             <TabsTrigger value="wan">Wan v2.6</TabsTrigger>
             <TabsTrigger value="wan25">Wan 2.5</TabsTrigger>
             <TabsTrigger value="flux2pro">Flux 2 Pro</TabsTrigger>
+            <TabsTrigger value="gemini3">Gemini 3</TabsTrigger>
           </TabsList>
 
           <TabsContent value="seedream">
@@ -2463,6 +2890,14 @@ function App() {
               state={flux2ProState}
               setState={setFlux2ProState}
               onGenerationComplete={(settings, result) => addToHistory('flux2pro', settings, result)}
+            />
+          </TabsContent>
+
+          <TabsContent value="gemini3">
+            <Gemini3Panel
+              state={gemini3State}
+              setState={setGemini3State}
+              onGenerationComplete={(settings, result) => addToHistory('gemini3', settings, result)}
             />
           </TabsContent>
         </Tabs>
@@ -2521,7 +2956,7 @@ function App() {
                     </Button>
                     <div className="mt-2 space-y-1">
                       <div className="text-xs font-medium text-primary">
-                        {item.type === 'seedream' ? 'SeeD Dream' : item.type === 'nanobanana' ? 'Nano Banana' : item.type === 'veo31' ? 'Veo 3.1' : item.type === 'wan' ? 'Wan v2.6' : item.type === 'wan25' ? 'Wan 2.5' : 'Flux 2 Pro'}
+                        {item.type === 'seedream' ? 'SeeD Dream' : item.type === 'nanobanana' ? 'Nano Banana' : item.type === 'veo31' ? 'Veo 3.1' : item.type === 'wan' ? 'Wan v2.6' : item.type === 'wan25' ? 'Wan 2.5' : item.type === 'flux2pro' ? 'Flux 2 Pro' : 'Gemini 3'}
                       </div>
                       <div className="text-xs text-muted-foreground line-clamp-2">
                         {item.settings.prompt}

@@ -390,6 +390,73 @@ export async function submitFlux2ProRequest({
 }
 
 /**
+ * Submit an image edit request to fal.ai Gemini 3 Pro
+ * @param {Object} params - Request parameters
+ * @param {string} params.prompt - The editing prompt (3-50000 characters)
+ * @param {string[]} params.imageUrls - Array of input image URLs
+ * @param {Function} params.onQueueUpdate - Queue update callback
+ * @param {boolean} params.logs - Enable logs
+ * @param {number} params.numImages - Number of images to generate (1-4)
+ * @param {number} params.seed - Random seed for reproducibility
+ * @param {string} params.aspectRatio - Aspect ratio preset
+ * @param {string} params.outputFormat - Output format (jpeg, png, webp)
+ * @param {string} params.resolution - Resolution (1K, 2K, 4K)
+ * @param {boolean} params.limitGenerations - Limit to 1 generation per prompt
+ * @param {boolean} params.enableWebSearch - Enable web search
+ * @returns {Promise<Object>} - The result data
+ */
+export async function submitGemini3Request({
+  prompt,
+  imageUrls,
+  onQueueUpdate,
+  logs = true,
+  numImages = 1,
+  seed = null,
+  aspectRatio = 'auto',
+  outputFormat = 'png',
+  resolution = '1K',
+  limitGenerations = false,
+  enableWebSearch = false
+}) {
+  if (!apiKey) {
+    throw new Error('FAL API key is not configured. Please set VITE_FAL_KEY in your .env file.');
+  }
+
+  try {
+    const input = {
+      prompt,
+      image_urls: imageUrls,
+      num_images: numImages,
+      aspect_ratio: aspectRatio,
+      output_format: outputFormat,
+      resolution,
+      limit_generations: limitGenerations,
+      enable_web_search: enableWebSearch
+    };
+
+    // Only add seed if provided
+    if (seed !== null && seed !== undefined) {
+      input.seed = seed;
+    }
+
+    const result = await fal.subscribe('fal-ai/gemini-3-pro-image-preview/edit', {
+      input,
+      logs,
+      onQueueUpdate
+    });
+
+    console.log('Gemini 3 Pro API Result:', result);
+    console.log('Result data:', result.data);
+    console.log('Result images:', result.data?.images);
+
+    return result.data || result;
+  } catch (error) {
+    console.error('Error submitting Gemini 3 Pro request:', error);
+    throw new Error(`Failed to submit request: ${error.message}`);
+  }
+}
+
+/**
  * Check if API key is configured
  * @returns {boolean}
  */

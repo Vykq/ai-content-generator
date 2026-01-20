@@ -4,13 +4,14 @@ A web application for editing images using fal.ai's SeeD Dream v4.5 and Nano Ban
 
 ## Features
 
-- **Six AI Models**:
+- **Seven AI Models**:
   - SeeD Dream v4.5 - Advanced image editing with reference images
   - Nano Banana Pro - Fast image generation with multiple aspect ratios
   - Veo 3.1 - Reference-to-video generation with audio
   - Wan v2.6 - Advanced image-to-image generation with prompt expansion
   - Wan 2.5 - Image-to-video generation with motion prompts
   - Flux 2 Pro - Professional-grade image editing with FLUX.2 [pro]
+  - Gemini 3 Pro - Google's Gemini 3 Pro with extensive prompt support and web search
 
 - **Girls Management**: Create and manage girl profiles with images, names, and handles
 
@@ -128,6 +129,21 @@ A web application for editing images using fal.ai's SeeD Dream v4.5 and Nano Ban
 4. Click "Edit Image"
    - Pricing: $0.03 for first megapixel; $0.015 per additional megapixel
 
+### Gemini 3 Pro
+1. Enter a detailed prompt (3-50,000 characters, with live character counter)
+2. Upload reference images (supports multiple images)
+3. Configure settings:
+   - Number of images (1-4)
+   - Resolution (1K, 2K, 4K - note: 4K costs 2x)
+   - Aspect ratio (11 options: auto, 21:9, 16:9, 3:2, 4:3, 5:4, 1:1, 4:5, 3:4, 2:3, 9:16)
+   - Output format (JPEG, PNG, WebP)
+   - Seed (for reproducibility, optional)
+   - Enable/disable generation limiting
+   - Enable/disable web search (enhances prompt with real-time data)
+4. Click "Generate Images"
+   - Shows description in results if provided
+   - Pricing: $0.15 per image (4K at 2x rate)
+
 ### Girls Management
 1. Click "Girls" in the sidebar
 2. Click "+ Add New Girl" button
@@ -166,7 +182,7 @@ The backend server provides the following endpoints:
 
 - **Frontend**: React 19, Vite, Tailwind CSS, shadcn/ui
 - **Backend**: Express.js, SQLite3
-- **APIs**: fal.ai (SeeD Dream v4.5, Nano Banana Pro, Veo 3.1, Wan v2.6, Wan 2.5, Flux 2 Pro)
+- **APIs**: fal.ai (SeeD Dream v4.5, Nano Banana Pro, Veo 3.1, Wan v2.6, Wan 2.5, Flux 2 Pro, Gemini 3 Pro)
 - **UI Components**: Radix UI primitives
 
 ## Project Structure
