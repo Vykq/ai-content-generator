@@ -4,12 +4,13 @@ A web application for editing images using fal.ai's SeeD Dream v4.5 and Nano Ban
 
 ## Features
 
-- **Five AI Models**:
+- **Six AI Models**:
   - SeeD Dream v4.5 - Advanced image editing with reference images
   - Nano Banana Pro - Fast image generation with multiple aspect ratios
   - Veo 3.1 - Reference-to-video generation with audio
   - Wan v2.6 - Advanced image-to-image generation with prompt expansion
   - Wan 2.5 - Image-to-video generation with motion prompts
+  - Flux 2 Pro - Professional-grade image editing with FLUX.2 [pro]
 
 - **Girls Management**: Create and manage girl profiles with images, names, and handles
 
@@ -115,6 +116,18 @@ A web application for editing images using fal.ai's SeeD Dream v4.5 and Nano Ban
 5. Click "Generate Video"
    - Processing time: 1-3 minutes (longer for 10s videos)
 
+### Flux 2 Pro
+1. Enter an editing prompt
+2. Upload input images
+3. Configure settings:
+   - Image size (auto, square_hd, portrait, landscape presets)
+   - Output format (JPEG, PNG)
+   - Seed (for reproducibility, optional)
+   - Safety tolerance (1-5, adjustable slider)
+   - Enable/disable safety checker
+4. Click "Edit Image"
+   - Pricing: $0.03 for first megapixel; $0.015 per additional megapixel
+
 ### Girls Management
 1. Click "Girls" in the sidebar
 2. Click "+ Add New Girl" button
@@ -153,7 +166,7 @@ The backend server provides the following endpoints:
 
 - **Frontend**: React 19, Vite, Tailwind CSS, shadcn/ui
 - **Backend**: Express.js, SQLite3
-- **APIs**: fal.ai (SeeD Dream v4.5, Nano Banana Pro, Veo 3.1, Wan v2.6, Wan 2.5)
+- **APIs**: fal.ai (SeeD Dream v4.5, Nano Banana Pro, Veo 3.1, Wan v2.6, Wan 2.5, Flux 2 Pro)
 - **UI Components**: Radix UI primitives
 
 ## Project Structure

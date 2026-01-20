@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { isApiKeyConfigured } from './services/falService';
-import { uploadFiles, uploadFile, submitEditRequest, submitNanoBananaRequest, submitVeo31Request, submitWanRequest, submitWan25Request } from './services/falService';
+import { uploadFiles, uploadFile, submitEditRequest, submitNanoBananaRequest, submitVeo31Request, submitWanRequest, submitWan25Request, submitFlux2ProRequest } from './services/falService';
 import { fetchHistory, addHistoryItem, deleteHistoryItem } from './services/historyService';
 import ImageUpload from './components/ImageUpload';
 import Sidebar from './components/Sidebar';
@@ -1826,6 +1826,348 @@ function Wan25Panel({ state, setState, onGenerationComplete }) {
   );
 }
 
+function Flux2ProPanel({ state, setState, onGenerationComplete }) {
+  const {
+    prompt,
+    images,
+    enableLogs,
+    imageSize,
+    seed,
+    safetyTolerance,
+    enableSafetyChecker,
+    outputFormat,
+    status,
+    logs,
+    result,
+    isProcessing,
+    uploadProgress
+  } = state;
+
+  const setPrompt = (value) => setState(prev => ({ ...prev, prompt: value }));
+  const setImages = (value) => setState(prev => ({ ...prev, images: value }));
+  const setEnableLogs = (value) => setState(prev => ({ ...prev, enableLogs: value }));
+  const setImageSize = (value) => setState(prev => ({ ...prev, imageSize: value }));
+  const setSeed = (value) => setState(prev => ({ ...prev, seed: value }));
+  const setSafetyTolerance = (value) => setState(prev => ({ ...prev, safetyTolerance: value }));
+  const setEnableSafetyChecker = (value) => setState(prev => ({ ...prev, enableSafetyChecker: value }));
+  const setOutputFormat = (value) => setState(prev => ({ ...prev, outputFormat: value }));
+  const setStatus = (value) => setState(prev => ({ ...prev, status: value }));
+  const setLogs = (value) => setState(prev => ({ ...prev, logs: typeof value === 'function' ? value(prev.logs) : value }));
+  const setResult = (value) => setState(prev => ({ ...prev, result: value }));
+  const setIsProcessing = (value) => setState(prev => ({ ...prev, isProcessing: value }));
+  const setUploadProgress = (value) => setState(prev => ({ ...prev, uploadProgress: value }));
+
+  const addLog = (message) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setLogs((prev) => [...prev, { timestamp, message }]);
+  };
+
+  const handleGirlSelect = (girl) => {
+    if (girl) {
+      const girlImage = {
+        id: `girl-${girl.id}-${Date.now()}`,
+        file: null,
+        preview: girl.image_url,
+        name: girl.name,
+        isFromUrl: true
+      };
+      setImages((prev) => [...prev, girlImage]);
+
+      if (girl.default_prompt) {
+        const currentPrompt = prompt.trim();
+        const newPrompt = currentPrompt
+          ? `${girl.default_prompt}\n\n${currentPrompt}`
+          : girl.default_prompt;
+        setPrompt(newPrompt);
+      }
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    setStatus('');
+    setLogs([]);
+    setResult(null);
+
+    if (!prompt.trim()) {
+      setStatus('ERROR: Please enter an editing prompt');
+      return;
+    }
+
+    if (images.length === 0) {
+      setStatus('ERROR: Please upload at least one input image');
+      return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+      setStatus('Uploading images...');
+      if (enableLogs) addLog('Starting image uploads...');
+
+      const urlImages = images.filter(img => img.isFromUrl).map(img => img.preview);
+      const fileImages = images.filter(img => !img.isFromUrl);
+
+      let uploadedUrls = [];
+      if (fileImages.length > 0) {
+        const imageFiles = fileImages.map((img) => img.file);
+        uploadedUrls = await uploadFiles(imageFiles, (current, total) => {
+          setUploadProgress({ current, total });
+          if (enableLogs) addLog(`Uploaded ${current}/${total} images`);
+        });
+      }
+
+      const imageUrls = [...urlImages, ...uploadedUrls];
+      setUploadProgress(null);
+
+      setStatus('Submitting to Flux 2 Pro...');
+      if (enableLogs) addLog('Submitting edit request...');
+
+      const result = await submitFlux2ProRequest({
+        prompt,
+        imageUrls,
+        imageSize,
+        seed: seed ? parseInt(seed) : null,
+        safetyTolerance,
+        enableSafetyChecker,
+        outputFormat,
+        logs: enableLogs,
+        onQueueUpdate: (update) => {
+          if (update.status === 'IN_PROGRESS') {
+            setStatus(`Processing: ${update.logs?.[update.logs.length - 1]?.message || 'Working...'}`);
+            if (enableLogs && update.logs) {
+              update.logs.forEach(log => addLog(log.message));
+            }
+          } else if (update.status === 'IN_QUEUE') {
+            setStatus(`In queue (position: ${update.position || '?'})`);
+            if (enableLogs) addLog('Request queued');
+          }
+        }
+      });
+
+      setResult(result);
+      setStatus('SUCCESS: Image edited successfully!');
+      if (enableLogs) addLog('Generation complete');
+
+      onGenerationComplete({
+        prompt,
+        images,
+        imageSize,
+        seed,
+        safetyTolerance,
+        enableSafetyChecker,
+        outputFormat
+      }, result);
+
+    } catch (error) {
+      setStatus(`ERROR: ${error.message}`);
+      if (enableLogs) addLog(`Error: ${error.message}`);
+    } finally {
+      setIsProcessing(false);
+      setUploadProgress(null);
+    }
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+      {/* Left Panel - Settings */}
+      <div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Flux 2 Pro Image Editor</CardTitle>
+            <CardDescription>Advanced image editing with FLUX.2 [pro]</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="flux-prompt">Editing Prompt</Label>
+                <Textarea
+                  id="flux-prompt"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="Describe the edits you want to make..."
+                  rows={3}
+                  disabled={isProcessing}
+                />
+              </div>
+
+              <GirlSelector onSelect={handleGirlSelect} disabled={isProcessing} />
+
+              <div>
+                <Label>Input Images</Label>
+                <ImageUpload onImagesChange={setImages} maxImages={10} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="flux-image-size">Image Size</Label>
+                  <Select value={imageSize} onValueChange={setImageSize} disabled={isProcessing}>
+                    <SelectTrigger id="flux-image-size">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">Auto</SelectItem>
+                      <SelectItem value="square_hd">Square HD</SelectItem>
+                      <SelectItem value="square">Square</SelectItem>
+                      <SelectItem value="portrait_4_3">Portrait 4:3</SelectItem>
+                      <SelectItem value="portrait_16_9">Portrait 16:9</SelectItem>
+                      <SelectItem value="landscape_4_3">Landscape 4:3</SelectItem>
+                      <SelectItem value="landscape_16_9">Landscape 16:9</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="flux-output-format">Output Format</Label>
+                  <Select value={outputFormat} onValueChange={setOutputFormat} disabled={isProcessing}>
+                    <SelectTrigger id="flux-output-format">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="jpeg">JPEG</SelectItem>
+                      <SelectItem value="png">PNG</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="flux-seed">Seed (Optional)</Label>
+                <input
+                  id="flux-seed"
+                  type="number"
+                  min="0"
+                  max="2147483647"
+                  value={seed}
+                  onChange={(e) => setSeed(e.target.value)}
+                  placeholder="Leave empty for random"
+                  disabled={isProcessing}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="flux-safety-tolerance">Safety Tolerance: {safetyTolerance}</Label>
+                <input
+                  id="flux-safety-tolerance"
+                  type="range"
+                  min="1"
+                  max="5"
+                  value={safetyTolerance}
+                  onChange={(e) => setSafetyTolerance(parseInt(e.target.value))}
+                  disabled={isProcessing}
+                  className="w-full"
+                />
+                <p className="text-xs text-muted-foreground mt-1">1 = Strictest, 5 = Most Permissive</p>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="flux-safety-checker"
+                  checked={enableSafetyChecker}
+                  onCheckedChange={setEnableSafetyChecker}
+                  disabled={isProcessing}
+                />
+                <Label htmlFor="flux-safety-checker">Enable Safety Checker</Label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="flux-logs"
+                  checked={enableLogs}
+                  onCheckedChange={setEnableLogs}
+                  disabled={isProcessing}
+                />
+                <Label htmlFor="flux-logs">Enable Progress Logs</Label>
+              </div>
+
+              <Button type="submit" className="w-full" disabled={isProcessing}>
+                {isProcessing ? 'Processing...' : 'Edit Image'}
+              </Button>
+
+              {uploadProgress && (
+                <p className="text-sm text-muted-foreground">
+                  Uploading: {uploadProgress.current}/{uploadProgress.total}
+                </p>
+              )}
+
+              <p className="text-xs text-muted-foreground">
+                Pricing: $0.03 for first megapixel; $0.015 per additional megapixel
+              </p>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Right Panel - Logs and Results */}
+      <div className="space-y-6">
+        {status && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Status</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className={status.startsWith('ERROR') ? 'text-destructive' : status.startsWith('SUCCESS') ? 'text-green-600' : ''}>
+                {status}
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {enableLogs && logs.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Logs</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-1 max-h-60 overflow-y-auto">
+                {logs.map((log, index) => (
+                  <div key={index} className="log-entry">
+                    <span className="log-timestamp">{log.timestamp}</span>
+                    <span>{log.message}</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {result && result.images && result.images.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Edited Images</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 gap-4">
+                {result.images.map((image, index) => (
+                  <div key={index}>
+                    <img
+                      src={image.url}
+                      alt={`Edited ${index + 1}`}
+                      className="w-full rounded-md"
+                    />
+                    {image.width && image.height && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {image.width} × {image.height}
+                      </p>
+                    )}
+                    <Button asChild className="w-full mt-2">
+                      <a href={image.url} download target="_blank" rel="noopener noreferrer">
+                        Download Image {index + 1}
+                      </a>
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [activeView, setActiveView] = useState('generate');
   const [activeTab, setActiveTab] = useState('seedream');
@@ -1929,6 +2271,23 @@ function App() {
     uploadProgress: null
   });
 
+  // State for Flux 2 Pro tab
+  const [flux2ProState, setFlux2ProState] = useState({
+    prompt: '',
+    images: [],
+    enableLogs: true,
+    imageSize: 'auto',
+    seed: '',
+    safetyTolerance: 2,
+    enableSafetyChecker: true,
+    outputFormat: 'jpeg',
+    status: '',
+    logs: [],
+    result: null,
+    isProcessing: false,
+    uploadProgress: null
+  });
+
   // Add to history when generation completes
   const addToHistory = async (type, settings, result) => {
     const timestamp = new Date().toLocaleString();
@@ -2012,6 +2371,18 @@ function App() {
         enableSafetyChecker: item.settings.enableSafetyChecker,
         result: item.result
       }));
+    } else if (item.type === 'flux2pro') {
+      setFlux2ProState(prev => ({
+        ...prev,
+        prompt: item.settings.prompt,
+        images: item.settings.images,
+        imageSize: item.settings.imageSize,
+        seed: item.settings.seed,
+        safetyTolerance: item.settings.safetyTolerance,
+        enableSafetyChecker: item.settings.enableSafetyChecker,
+        outputFormat: item.settings.outputFormat,
+        result: item.result
+      }));
     }
   };
 
@@ -2038,12 +2409,13 @@ function App() {
               </div>
 
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full max-w-4xl grid-cols-5">
+          <TabsList className="grid w-full max-w-5xl grid-cols-6">
             <TabsTrigger value="seedream">SeeD Dream v4.5</TabsTrigger>
             <TabsTrigger value="nanobanana">Nano Banana Pro</TabsTrigger>
             <TabsTrigger value="veo31">Veo 3.1</TabsTrigger>
             <TabsTrigger value="wan">Wan v2.6</TabsTrigger>
             <TabsTrigger value="wan25">Wan 2.5</TabsTrigger>
+            <TabsTrigger value="flux2pro">Flux 2 Pro</TabsTrigger>
           </TabsList>
 
           <TabsContent value="seedream">
@@ -2083,6 +2455,14 @@ function App() {
               state={wan25State}
               setState={setWan25State}
               onGenerationComplete={(settings, result) => addToHistory('wan25', settings, result)}
+            />
+          </TabsContent>
+
+          <TabsContent value="flux2pro">
+            <Flux2ProPanel
+              state={flux2ProState}
+              setState={setFlux2ProState}
+              onGenerationComplete={(settings, result) => addToHistory('flux2pro', settings, result)}
             />
           </TabsContent>
         </Tabs>
@@ -2141,7 +2521,7 @@ function App() {
                     </Button>
                     <div className="mt-2 space-y-1">
                       <div className="text-xs font-medium text-primary">
-                        {item.type === 'seedream' ? 'SeeD Dream' : item.type === 'nanobanana' ? 'Nano Banana' : item.type === 'veo31' ? 'Veo 3.1' : item.type === 'wan' ? 'Wan v2.6' : 'Wan 2.5'}
+                        {item.type === 'seedream' ? 'SeeD Dream' : item.type === 'nanobanana' ? 'Nano Banana' : item.type === 'veo31' ? 'Veo 3.1' : item.type === 'wan' ? 'Wan v2.6' : item.type === 'wan25' ? 'Wan 2.5' : 'Flux 2 Pro'}
                       </div>
                       <div className="text-xs text-muted-foreground line-clamp-2">
                         {item.settings.prompt}

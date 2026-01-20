@@ -329,6 +329,67 @@ export async function submitWan25Request({
 }
 
 /**
+ * Submit an image edit request to fal.ai Flux 2 Pro
+ * @param {Object} params - Request parameters
+ * @param {string} params.prompt - The editing prompt
+ * @param {string[]} params.imageUrls - Array of input image URLs
+ * @param {Function} params.onQueueUpdate - Queue update callback
+ * @param {boolean} params.logs - Enable logs
+ * @param {string} params.imageSize - Image size preset or custom dimensions
+ * @param {number} params.seed - Random seed for reproducibility
+ * @param {number} params.safetyTolerance - Safety level (1-5)
+ * @param {boolean} params.enableSafetyChecker - Enable content filtering
+ * @param {string} params.outputFormat - Output format (jpeg, png)
+ * @returns {Promise<Object>} - The result data
+ */
+export async function submitFlux2ProRequest({
+  prompt,
+  imageUrls,
+  onQueueUpdate,
+  logs = true,
+  imageSize = 'auto',
+  seed = null,
+  safetyTolerance = 2,
+  enableSafetyChecker = true,
+  outputFormat = 'jpeg'
+}) {
+  if (!apiKey) {
+    throw new Error('FAL API key is not configured. Please set VITE_FAL_KEY in your .env file.');
+  }
+
+  try {
+    const input = {
+      prompt,
+      image_urls: imageUrls,
+      image_size: imageSize,
+      safety_tolerance: safetyTolerance,
+      enable_safety_checker: enableSafetyChecker,
+      output_format: outputFormat
+    };
+
+    // Only add seed if provided
+    if (seed !== null && seed !== undefined) {
+      input.seed = seed;
+    }
+
+    const result = await fal.subscribe('fal-ai/flux-2-pro/edit', {
+      input,
+      logs,
+      onQueueUpdate
+    });
+
+    console.log('Flux 2 Pro API Result:', result);
+    console.log('Result data:', result.data);
+    console.log('Result images:', result.data?.images);
+
+    return result.data || result;
+  } catch (error) {
+    console.error('Error submitting Flux 2 Pro request:', error);
+    throw new Error(`Failed to submit request: ${error.message}`);
+  }
+}
+
+/**
  * Check if API key is configured
  * @returns {boolean}
  */
