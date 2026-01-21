@@ -1,11 +1,51 @@
 import { fal } from '@fal-ai/client';
 
-// Configure fal client with API key from environment
-const apiKey = import.meta.env.VITE_FAL_KEY;
+const envApiKey = import.meta.env.VITE_FAL_KEY;
+const FAL_STORAGE_KEY = 'fal_api_key';
 
-if (apiKey) {
+function readStoredValue(key) {
+  if (typeof localStorage === 'undefined') return '';
+  return localStorage.getItem(key) || '';
+}
+
+export function getFalApiKey() {
+  return readStoredValue(FAL_STORAGE_KEY) || envApiKey || '';
+}
+
+export function setFalApiKey(key) {
+  if (typeof localStorage !== 'undefined') {
+    if (key) {
+      localStorage.setItem(FAL_STORAGE_KEY, key);
+    } else {
+      localStorage.removeItem(FAL_STORAGE_KEY);
+    }
+  }
+
+  if (key) {
+    fal.config({
+      credentials: key
+    });
+  }
+}
+
+function ensureFalConfigured() {
+  const apiKey = getFalApiKey();
+  if (!apiKey) {
+    throw new Error('FAL API key is not configured. Add it in Settings or set VITE_FAL_KEY in your .env file.');
+  }
+
   fal.config({
     credentials: apiKey
+  });
+
+  return apiKey;
+}
+
+// Initialize FAL client on module load
+const initialKey = getFalApiKey();
+if (initialKey) {
+  fal.config({
+    credentials: initialKey
   });
 }
 
@@ -16,6 +56,7 @@ if (apiKey) {
  */
 export async function uploadFile(file) {
   try {
+    ensureFalConfigured();
     const url = await fal.storage.upload(file);
     return url;
   } catch (error) {
@@ -64,9 +105,7 @@ export async function submitEditRequest({
   enableSafetyChecker = true,
   imageSize = 'square_hd'
 }) {
-  if (!apiKey) {
-    throw new Error('FAL API key is not configured. Please set VITE_FAL_KEY in your .env file.');
-  }
+  ensureFalConfigured();
 
   try {
     const input = {
@@ -114,9 +153,7 @@ export async function submitNanoBananaRequest({
   outputFormat = 'png',
   enableWebSearch = false
 }) {
-  if (!apiKey) {
-    throw new Error('FAL API key is not configured. Please set VITE_FAL_KEY in your .env file.');
-  }
+  ensureFalConfigured();
 
   try {
     const input = {
@@ -167,9 +204,7 @@ export async function submitVeo31Request({
   generateAudio = true,
   autoFix = false
 }) {
-  if (!apiKey) {
-    throw new Error('FAL API key is not configured. Please set VITE_FAL_KEY in your .env file.');
-  }
+  ensureFalConfigured();
 
   try {
     const input = {
@@ -222,9 +257,7 @@ export async function submitWanRequest({
   seed = null,
   enableSafetyChecker = true
 }) {
-  if (!apiKey) {
-    throw new Error('FAL API key is not configured. Please set VITE_FAL_KEY in your .env file.');
-  }
+  ensureFalConfigured();
 
   try {
     const input = {
@@ -288,9 +321,7 @@ export async function submitWan25Request({
   seed = null,
   enableSafetyChecker = true
 }) {
-  if (!apiKey) {
-    throw new Error('FAL API key is not configured. Please set VITE_FAL_KEY in your .env file.');
-  }
+  ensureFalConfigured();
 
   try {
     const input = {
@@ -353,9 +384,7 @@ export async function submitFlux2ProRequest({
   enableSafetyChecker = true,
   outputFormat = 'jpeg'
 }) {
-  if (!apiKey) {
-    throw new Error('FAL API key is not configured. Please set VITE_FAL_KEY in your .env file.');
-  }
+  ensureFalConfigured();
 
   try {
     const input = {
@@ -418,9 +447,7 @@ export async function submitGemini3Request({
   limitGenerations = false,
   enableWebSearch = false
 }) {
-  if (!apiKey) {
-    throw new Error('FAL API key is not configured. Please set VITE_FAL_KEY in your .env file.');
-  }
+  ensureFalConfigured();
 
   try {
     const input = {
@@ -461,5 +488,5 @@ export async function submitGemini3Request({
  * @returns {boolean}
  */
 export function isApiKeyConfigured() {
-  return !!apiKey;
+  return !!getFalApiKey();
 }

@@ -3,9 +3,12 @@ import { fetchGirls } from '../services/girlsService';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
-export default function GirlSelector({ onSelect, disabled }) {
+export default function GirlSelector({ onSelect, disabled, value }) {
   const [girls, setGirls] = useState([]);
-  const [selectedGirlId, setSelectedGirlId] = useState('');
+  const [internalSelectedGirlId, setInternalSelectedGirlId] = useState('');
+
+  // Use controlled value if provided, otherwise use internal state
+  const selectedGirlId = value !== undefined ? (value ? value.toString() : '') : internalSelectedGirlId;
 
   useEffect(() => {
     loadGirls();
@@ -17,7 +20,11 @@ export default function GirlSelector({ onSelect, disabled }) {
   };
 
   const handleSelect = (value) => {
-    setSelectedGirlId(value);
+    // Update internal state only if not controlled
+    if (value === undefined) {
+      setInternalSelectedGirlId(value);
+    }
+
     if (value === 'none') {
       onSelect(null);
     } else {

@@ -1,9 +1,20 @@
 import { useState } from 'react';
 import './ImageUpload.css';
 
-export default function ImageUpload({ onImagesChange, maxImages = 10 }) {
-  const [images, setImages] = useState([]);
+export default function ImageUpload({ images: imagesProp, onImagesChange, maxImages = 10 }) {
+  const [internalImages, setInternalImages] = useState([]);
   const [isDragging, setIsDragging] = useState(false);
+  // Ensure images is always an array
+  const images = Array.isArray(imagesProp) ? imagesProp : internalImages;
+
+  const updateImages = (nextImages) => {
+    if (imagesProp === undefined) {
+      setInternalImages(nextImages);
+    }
+    if (onImagesChange) {
+      onImagesChange(nextImages);
+    }
+  };
 
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files);
@@ -21,8 +32,7 @@ export default function ImageUpload({ onImagesChange, maxImages = 10 }) {
     }));
 
     const updatedImages = [...images, ...newImages];
-    setImages(updatedImages);
-    onImagesChange(updatedImages);
+    updateImages(updatedImages);
   };
 
   const handleDragEnter = (e) => {
@@ -64,8 +74,7 @@ export default function ImageUpload({ onImagesChange, maxImages = 10 }) {
     }));
 
     const updatedImages = [...images, ...newImages];
-    setImages(updatedImages);
-    onImagesChange(updatedImages);
+    updateImages(updatedImages);
   };
 
   const removeImage = (id) => {
@@ -77,15 +86,13 @@ export default function ImageUpload({ onImagesChange, maxImages = 10 }) {
       URL.revokeObjectURL(imageToRemove.preview);
     }
 
-    setImages(updatedImages);
-    onImagesChange(updatedImages);
+    updateImages(updatedImages);
   };
 
   const clearAll = () => {
     // Clean up all object URLs
     images.forEach((img) => URL.revokeObjectURL(img.preview));
-    setImages([]);
-    onImagesChange([]);
+    updateImages([]);
   };
 
   return (

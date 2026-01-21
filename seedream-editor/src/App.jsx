@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { isApiKeyConfigured } from './services/falService';
+import { isApiKeyConfigured, setFalApiKey } from './services/falService';
 import { uploadFiles, uploadFile, submitEditRequest, submitNanoBananaRequest, submitVeo31Request, submitWanRequest, submitWan25Request, submitFlux2ProRequest, submitGemini3Request } from './services/falService';
 import { fetchHistory, addHistoryItem, deleteHistoryItem } from './services/historyService';
 import ImageUpload from './components/ImageUpload';
@@ -11,10 +11,30 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from './com
 import { Button } from './components/ui/button';
 import { Label } from './components/ui/label';
 import { Textarea } from './components/ui/textarea';
+import { Input } from './components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './components/ui/select';
 import { Checkbox } from './components/ui/checkbox';
 import { Alert, AlertDescription } from './components/ui/alert';
 import './App.css';
+
+const STORAGE_KEYS = {
+  falApiKey: 'fal_api_key',
+  openAiApiKey: 'openai_api_key',
+  defaultJsonPrompt: 'default_json_prompt',
+  jsonPromptHistory: 'json_prompt_history'
+};
+
+function readStoredValue(key, fallback = '') {
+  if (typeof localStorage === 'undefined') return fallback;
+  return localStorage.getItem(key) || fallback;
+}
+
+function normalizeApiKey(rawKey = '') {
+  const trimmed = rawKey.trim();
+  const withoutScheme = trimmed.replace(/^Bearer\s+/i, '');
+  const withoutQuotes = withoutScheme.replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1');
+  return withoutQuotes.replace(/\s+/g, '');
+}
 
 function SeedDreamPanel({ state, setState, onGenerationComplete }) {
   const {
@@ -57,7 +77,7 @@ function SeedDreamPanel({ state, setState, onGenerationComplete }) {
         name: girl.name,
         isFromUrl: true // Flag to identify URL-based images
       };
-      setImages((prev) => [...prev, girlImage]);
+      setImages((prev) => [...(Array.isArray(prev) ? prev : []), girlImage]);
 
       // Prepend default prompt if exists
       if (girl.default_prompt) {
@@ -196,7 +216,7 @@ function SeedDreamPanel({ state, setState, onGenerationComplete }) {
 
               <GirlSelector onSelect={handleGirlSelect} disabled={isProcessing} />
 
-              <ImageUpload onImagesChange={setImages} maxImages={10} />
+              <ImageUpload images={images} onImagesChange={setImages} maxImages={10} />
 
               <div className="space-y-2">
                 <Label htmlFor="imageSize">Image Size</Label>
@@ -398,7 +418,7 @@ function NanoBananaPanel({ state, setState, onGenerationComplete }) {
         name: girl.name,
         isFromUrl: true
       };
-      setImages((prev) => [...prev, girlImage]);
+      setImages((prev) => [...(Array.isArray(prev) ? prev : []), girlImage]);
 
       if (girl.default_prompt) {
         const currentPrompt = prompt.trim();
@@ -542,7 +562,7 @@ function NanoBananaPanel({ state, setState, onGenerationComplete }) {
 
               <GirlSelector onSelect={handleGirlSelect} disabled={isProcessing} />
 
-              <ImageUpload onImagesChange={setImages} maxImages={10} />
+              <ImageUpload images={images} onImagesChange={setImages} maxImages={10} />
 
               <div className="space-y-2">
                 <Label htmlFor="numImages">Number of Images</Label>
@@ -797,7 +817,7 @@ function Veo31Panel({ state, setState, onGenerationComplete }) {
         name: girl.name,
         isFromUrl: true
       };
-      setImages((prev) => [...prev, girlImage]);
+      setImages((prev) => [...(Array.isArray(prev) ? prev : []), girlImage]);
 
       if (girl.default_prompt) {
         const currentPrompt = prompt.trim();
@@ -928,7 +948,7 @@ function Veo31Panel({ state, setState, onGenerationComplete }) {
 
               <div>
                 <Label>Reference Images</Label>
-                <ImageUpload onImagesChange={setImages} maxImages={10} />
+                <ImageUpload images={images} onImagesChange={setImages} maxImages={10} />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -1124,7 +1144,7 @@ function WanPanel({ state, setState, onGenerationComplete }) {
         name: girl.name,
         isFromUrl: true
       };
-      setImages((prev) => [...prev, girlImage]);
+      setImages((prev) => [...(Array.isArray(prev) ? prev : []), girlImage]);
 
       if (girl.default_prompt) {
         const currentPrompt = prompt.trim();
@@ -1268,7 +1288,7 @@ function WanPanel({ state, setState, onGenerationComplete }) {
 
               <div>
                 <Label>Reference Images (1-3 required)</Label>
-                <ImageUpload onImagesChange={setImages} maxImages={3} />
+                <ImageUpload images={images} onImagesChange={setImages} maxImages={3} />
                 <p className="text-xs text-muted-foreground mt-1">Order matters: reference as 'image 1', 'image 2', etc.</p>
               </div>
 
@@ -1871,7 +1891,7 @@ function Flux2ProPanel({ state, setState, onGenerationComplete }) {
         name: girl.name,
         isFromUrl: true
       };
-      setImages((prev) => [...prev, girlImage]);
+      setImages((prev) => [...(Array.isArray(prev) ? prev : []), girlImage]);
 
       if (girl.default_prompt) {
         const currentPrompt = prompt.trim();
@@ -1996,7 +2016,7 @@ function Flux2ProPanel({ state, setState, onGenerationComplete }) {
 
               <div>
                 <Label>Input Images</Label>
-                <ImageUpload onImagesChange={setImages} maxImages={10} />
+                <ImageUpload images={images} onImagesChange={setImages} maxImages={10} />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -2217,7 +2237,7 @@ function Gemini3Panel({ state, setState, onGenerationComplete }) {
         name: girl.name,
         isFromUrl: true
       };
-      setImages((prev) => [...prev, girlImage]);
+      setImages((prev) => [...(Array.isArray(prev) ? prev : []), girlImage]);
 
       if (girl.default_prompt) {
         const currentPrompt = prompt.trim();
@@ -2354,7 +2374,7 @@ function Gemini3Panel({ state, setState, onGenerationComplete }) {
 
               <div>
                 <Label>Input Images</Label>
-                <ImageUpload onImagesChange={setImages} maxImages={10} />
+                <ImageUpload images={images} onImagesChange={setImages} maxImages={10} />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -2561,6 +2581,578 @@ function Gemini3Panel({ state, setState, onGenerationComplete }) {
   );
 }
 
+function SettingsView() {
+  const [falApiKey, setFalApiKeyState] = useState(() => readStoredValue(STORAGE_KEYS.falApiKey));
+  const [openAiApiKey, setOpenAiApiKey] = useState(() => readStoredValue(STORAGE_KEYS.openAiApiKey));
+  const [defaultJsonPrompt, setDefaultJsonPrompt] = useState(() => readStoredValue(STORAGE_KEYS.defaultJsonPrompt));
+  const [status, setStatus] = useState('');
+
+  const handleSave = () => {
+    const trimmedFalKey = falApiKey.trim();
+    const cleanedOpenAiKey = normalizeApiKey(openAiApiKey);
+
+    setFalApiKey(trimmedFalKey);
+
+    if (typeof localStorage !== 'undefined') {
+      if (cleanedOpenAiKey) {
+        localStorage.setItem(STORAGE_KEYS.openAiApiKey, cleanedOpenAiKey);
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.openAiApiKey);
+      }
+
+      if (defaultJsonPrompt.trim()) {
+        localStorage.setItem(STORAGE_KEYS.defaultJsonPrompt, defaultJsonPrompt);
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.defaultJsonPrompt);
+      }
+    }
+
+    setStatus('Settings saved.');
+    setTimeout(() => setStatus(''), 2000);
+  };
+
+  return (
+    <div className="p-4 md:p-8">
+      <div className="max-w-3xl mx-auto space-y-6">
+        <div>
+          <h1 className="text-4xl font-bold mb-2">Settings</h1>
+          <p className="text-muted-foreground">Manage API keys and defaults stored in your browser.</p>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>API Keys</CardTitle>
+            <CardDescription>Keys are saved locally in your browser.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="fal-api-key">FAL AI API Key</Label>
+              <Input
+                id="fal-api-key"
+                type="password"
+                value={falApiKey}
+                onChange={(e) => setFalApiKeyState(e.target.value)}
+                placeholder="Paste your FAL API key"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="openai-api-key">OpenAI API Key</Label>
+              <Input
+                id="openai-api-key"
+                type="password"
+                value={openAiApiKey}
+                onChange={(e) => setOpenAiApiKey(e.target.value)}
+                placeholder="Paste your OpenAI API key"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Default JSON Prompt</CardTitle>
+            <CardDescription>Example JSON structure for the AI to follow. The AI will replace the content with what it sees in your images, but keep the same field structure.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Textarea
+              value={defaultJsonPrompt}
+              onChange={(e) => setDefaultJsonPrompt(e.target.value)}
+              rows={5}
+              placeholder='{\n  "prompt": "",\n  "style": ""\n}'
+            />
+          </CardContent>
+        </Card>
+
+        <div className="flex items-center gap-4">
+          <Button onClick={handleSave}>Save Settings</Button>
+          {status && <span className="text-sm text-muted-foreground">{status}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function JsonPrompterView({ onSendToModel }) {
+  const [prompt, setPrompt] = useState(() => readStoredValue(STORAGE_KEYS.defaultJsonPrompt));
+  const [status, setStatus] = useState('');
+  const [sourceImage, setSourceImage] = useState(null);
+  const [sourceImagePreview, setSourceImagePreview] = useState('');
+  const [selectedGirl, setSelectedGirl] = useState(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [selectedModel, setSelectedModel] = useState('');
+  const [history, setHistory] = useState(() => {
+    const raw = readStoredValue(STORAGE_KEYS.jsonPromptHistory, '[]');
+    try {
+      return JSON.parse(raw);
+    } catch (error) {
+      console.error('Failed to parse JSON prompt history:', error);
+      return [];
+    }
+  });
+
+  const saveHistory = (nextHistory) => {
+    setHistory(nextHistory);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(STORAGE_KEYS.jsonPromptHistory, JSON.stringify(nextHistory));
+    }
+  };
+
+  const handleImageUpload = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setSourceImage(null);
+      setSourceImagePreview('');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setSourceImage(file);
+      setSourceImagePreview(reader.result?.toString() || '');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeImage = () => {
+    setSourceImage(null);
+    setSourceImagePreview('');
+  };
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setStatus('Copied to clipboard.');
+      setTimeout(() => setStatus(''), 2000);
+    } catch (error) {
+      console.error('Failed to copy JSON prompt:', error);
+      setStatus('Copy failed.');
+      setTimeout(() => setStatus(''), 2000);
+    }
+  };
+
+  const handleSaveDefault = () => {
+    if (typeof localStorage !== 'undefined') {
+      if (prompt.trim()) {
+        localStorage.setItem(STORAGE_KEYS.defaultJsonPrompt, prompt);
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.defaultJsonPrompt);
+      }
+    }
+    setStatus('Default updated.');
+    setTimeout(() => setStatus(''), 2000);
+  };
+
+  const handleReset = () => {
+    setPrompt(readStoredValue(STORAGE_KEYS.defaultJsonPrompt));
+  };
+
+  const handleLoadFromHistory = (item) => {
+    // Set the prompt
+    setPrompt(item.prompt);
+
+    // Restore the source image preview
+    if (item.sourceImagePreview) {
+      setSourceImagePreview(item.sourceImagePreview);
+    }
+
+    // Restore the selected girl
+    if (item.girlId) {
+      const girl = {
+        id: item.girlId,
+        name: item.girlName,
+        handle: item.girlHandle,
+        image_url: item.girlImageUrl
+      };
+      setSelectedGirl(girl);
+    }
+  };
+
+  const handleSendToModel = () => {
+    if (!selectedModel) {
+      setStatus('Select a model first.');
+      setTimeout(() => setStatus(''), 2000);
+      return;
+    }
+    if (!prompt.trim()) {
+      setStatus('No prompt to send.');
+      setTimeout(() => setStatus(''), 2000);
+      return;
+    }
+
+    onSendToModel(selectedModel, prompt, selectedGirl);
+    setStatus(`Sent to ${getModelDisplayName(selectedModel)}.`);
+    setTimeout(() => setStatus(''), 2000);
+  };
+
+  const getModelDisplayName = (modelId) => {
+    const models = {
+      seedream: 'SeeD Dream v4.5',
+      nanobanana: 'Nano Banana Pro',
+      veo31: 'Veo 3.1',
+      wan: 'Wan v2.6',
+      wan25: 'Wan 2.5',
+      flux2pro: 'Flux 2 Pro',
+      gemini3: 'Gemini 3'
+    };
+    return models[modelId] || modelId;
+  };
+
+  const normalizeJsonOutput = (text) => {
+    if (!text) return '';
+    const trimmed = text.trim();
+    if (trimmed.startsWith('```')) {
+      return trimmed.replace(/^```[a-zA-Z]*\n?/, '').replace(/```$/, '').trim();
+    }
+    return trimmed;
+  };
+
+  const fetchAsDataUrl = async (url) => {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to load image (${response.status})`);
+    }
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result?.toString() || '');
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  const handleGenerate = async () => {
+    const openAiKey = normalizeApiKey(readStoredValue(STORAGE_KEYS.openAiApiKey));
+    if (!openAiKey) {
+      setStatus('Add your OpenAI API key in Settings first.');
+      return;
+    }
+    if (!sourceImagePreview) {
+      setStatus('Upload a source image to generate a JSON prompt.');
+      return;
+    }
+    if (!selectedGirl?.image_url) {
+      setStatus('Select a girl to reference her face and hair details.');
+      return;
+    }
+
+    const defaultTemplate = readStoredValue(STORAGE_KEYS.defaultJsonPrompt);
+
+    setIsGenerating(true);
+    setStatus('Generating JSON prompt...');
+
+    try {
+      const girlImageDataUrl = selectedGirl.image_url.startsWith('data:')
+        ? selectedGirl.image_url
+        : await fetchAsDataUrl(selectedGirl.image_url);
+
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${openAiKey}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          temperature: 0.7,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an AI that generates detailed JSON prompts for image editing. You analyze images and create comprehensive descriptions of what you see.'
+            },
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: `Analyze these two images and create a JSON prompt for image editing:
+
+IMAGE 1 (Source): This is the main reference for background, scene, lighting, camera angle, body pose, clothing, and overall composition.
+IMAGE 2 (Girl Reference): This is the face reference - use her facial features, hair style, and hair color.
+
+Create a JSON prompt that describes:
+1. The exact scene, background, and environment from the source image
+2. The lighting, camera angle, and atmosphere from the source image
+3. The body pose, clothing, and positioning from the source image
+4. The facial features, hair style, and hair color from the girl reference image
+
+Generate a COMPLETE and DETAILED description based on what you actually see in these images. Be specific about colors, styles, poses, and details.
+
+${defaultTemplate ? `Follow this JSON structure (this is just an example of the format, replace ALL content with what you see in the images):\n${defaultTemplate}\n\n` : ''}Output ONLY valid JSON, no additional text or commentary.`
+                },
+                {
+                  type: 'image_url',
+                  image_url: { url: sourceImagePreview }
+                },
+                {
+                  type: 'image_url',
+                  image_url: { url: girlImageDataUrl }
+                }
+              ]
+            }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`OpenAI error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const content = data?.choices?.[0]?.message?.content || '';
+      setPrompt(normalizeJsonOutput(content));
+      setStatus('JSON prompt generated.');
+      const newEntry = {
+        id: Date.now().toString(),
+        prompt: normalizeJsonOutput(content),
+        sourceImagePreview,
+        girlId: selectedGirl.id,
+        girlImageUrl: selectedGirl.image_url,
+        girlName: selectedGirl.name,
+        girlHandle: selectedGirl.handle,
+        createdAt: new Date().toLocaleString()
+      };
+      saveHistory([newEntry, ...history].slice(0, 20));
+    } catch (error) {
+      console.error('Failed to generate JSON prompt:', error);
+      setStatus('Generation failed. Check the console for details.');
+    } finally {
+      setIsGenerating(false);
+      setTimeout(() => setStatus(''), 2000);
+    }
+  };
+
+  return (
+    <div className="p-4 md:p-8">
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div>
+          <h1 className="text-4xl font-bold mb-2">JSON Prompter</h1>
+          <p className="text-muted-foreground">Draft and reuse JSON prompts quickly.</p>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Reference Inputs</CardTitle>
+            <CardDescription>Source image = background, scene, pose, clothing. Girl image = face and hair reference. AI will analyze both and generate a complete JSON prompt.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="json-source-image">Upload Source Image</Label>
+              <Input
+                id="json-source-image"
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+              />
+            </div>
+            {sourceImagePreview && (
+              <div className="flex items-start gap-4">
+                <img
+                  src={sourceImagePreview}
+                  alt={sourceImage?.name || 'Source preview'}
+                  className="h-32 w-32 rounded-md object-cover border border-border"
+                />
+                <Button variant="outline" onClick={removeImage}>Remove</Button>
+              </div>
+            )}
+            <GirlSelector onSelect={setSelectedGirl} value={selectedGirl?.id} />
+            {selectedGirl?.image_url && (
+              <div className="flex items-start gap-4">
+                <img
+                  src={selectedGirl.image_url}
+                  alt={selectedGirl.name}
+                  className="h-20 w-20 rounded-full object-cover border border-border"
+                />
+                <div className="text-sm text-muted-foreground">
+                  Using {selectedGirl.name} as the head reference.
+                </div>
+              </div>
+            )}
+            <Button onClick={handleGenerate} disabled={isGenerating}>
+              {isGenerating ? 'Generating...' : 'Generate JSON Prompt'}
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Prompt</CardTitle>
+            <CardDescription>Start from your default template or create a new JSON payload.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              rows={10}
+              placeholder='{\n  "prompt": "Describe the generation...",\n  "style": "",\n  "aspect_ratio": "1:1"\n}'
+            />
+            <div className="flex flex-wrap items-center gap-3">
+              <Button onClick={handleCopy} variant="secondary">Copy JSON</Button>
+              <Button onClick={handleSaveDefault} variant="outline">Save as Default</Button>
+              <Button onClick={handleReset} variant="ghost">Reset to Default</Button>
+              <div className="flex items-center gap-2">
+                <Select value={selectedModel} onValueChange={setSelectedModel}>
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Select model..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="seedream">SeeD Dream v4.5</SelectItem>
+                    <SelectItem value="nanobanana">Nano Banana Pro</SelectItem>
+                    <SelectItem value="veo31">Veo 3.1</SelectItem>
+                    <SelectItem value="wan">Wan v2.6</SelectItem>
+                    <SelectItem value="wan25">Wan 2.5</SelectItem>
+                    <SelectItem value="flux2pro">Flux 2 Pro</SelectItem>
+                    <SelectItem value="gemini3">Gemini 3</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button onClick={handleSendToModel} disabled={!selectedModel}>Send</Button>
+              </div>
+              {status && <span className="text-sm text-muted-foreground">{status}</span>}
+            </div>
+          </CardContent>
+        </Card>
+
+        {history.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Prompt History</CardTitle>
+              <CardDescription>Click a card to load the saved JSON prompt.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                {history.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className="text-left border border-border rounded-lg p-3 hover:border-primary transition-colors"
+                    onClick={() => handleLoadFromHistory(item)}
+                  >
+                    <div className="flex items-start gap-3">
+                      <img
+                        src={item.sourceImagePreview}
+                        alt="Source"
+                        className="h-20 w-20 rounded-md object-cover border border-border"
+                      />
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-primary">
+                          {item.girlName || 'Unknown girl'}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {item.createdAt}
+                        </div>
+                        <div className="mt-2 line-clamp-2 text-xs text-muted-foreground whitespace-pre-wrap">
+                          {item.prompt}
+                        </div>
+                      </div>
+                      {item.girlImageUrl && (
+                        <img
+                          src={item.girlImageUrl}
+                          alt="Girl"
+                          className="h-14 w-14 rounded-full object-cover border border-border"
+                        />
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function HistoryView({ history, isLoading, onRestore, onDelete }) {
+  const getModelDisplayName = (type) => {
+    const models = {
+      seedream: 'SeeD Dream v4.5',
+      nanobanana: 'Nano Banana Pro',
+      veo31: 'Veo 3.1',
+      wan: 'Wan v2.6',
+      wan25: 'Wan 2.5',
+      flux2pro: 'Flux 2 Pro',
+      gemini3: 'Gemini 3 Pro'
+    };
+    return models[type] || type;
+  };
+
+  return (
+    <div className="p-4 md:p-8">
+      <div className="max-w-7xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold mb-2">Generation History</h1>
+          <p className="text-muted-foreground">View and restore your previous generations.</p>
+        </div>
+
+        {isLoading ? (
+          <Card>
+            <CardContent className="p-8">
+              <p className="text-muted-foreground text-center">Loading history...</p>
+            </CardContent>
+          </Card>
+        ) : history.length > 0 ? (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+            {history.map((item) => (
+              <div
+                key={item.id}
+                className="group relative"
+              >
+                <div
+                  className="aspect-square rounded-lg overflow-hidden border-2 border-border group-hover:border-primary transition-colors cursor-pointer"
+                  onClick={() => onRestore(item)}
+                >
+                  {item.result?.images?.[0] && (
+                    <img
+                      src={item.result.images[0].url}
+                      alt={item.settings.prompt}
+                      className="w-full h-full object-cover"
+                    />
+                  )}
+                  {item.result?.video && (
+                    <video
+                      src={item.result.video.url}
+                      className="w-full h-full object-cover"
+                      muted
+                    />
+                  )}
+                </div>
+                <Button
+                  variant="destructive"
+                  size="icon"
+                  className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(item.id);
+                  }}
+                >
+                  ×
+                </Button>
+                <div className="mt-2 space-y-1">
+                  <div className="text-xs font-medium text-primary">
+                    {getModelDisplayName(item.type)}
+                  </div>
+                  <div className="text-xs text-muted-foreground line-clamp-2">
+                    {item.settings.prompt}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {item.timestamp}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="p-8">
+              <p className="text-muted-foreground text-center">No generations yet. Start creating to see your history here.</p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [activeView, setActiveView] = useState('generate');
   const [activeTab, setActiveTab] = useState('seedream');
@@ -2728,7 +3320,7 @@ function App() {
       setSeedDreamState(prev => ({
         ...prev,
         prompt: item.settings.prompt,
-        images: item.settings.images,
+        images: Array.isArray(item.settings.images) ? item.settings.images : [],
         enableSafetyChecker: item.settings.enableSafetyChecker,
         imageSize: item.settings.imageSize,
         result: item.result
@@ -2737,7 +3329,7 @@ function App() {
       setNanoBananaState(prev => ({
         ...prev,
         prompt: item.settings.prompt,
-        images: item.settings.images,
+        images: Array.isArray(item.settings.images) ? item.settings.images : [],
         numImages: item.settings.numImages,
         aspectRatio: item.settings.aspectRatio,
         resolution: item.settings.resolution,
@@ -2749,7 +3341,7 @@ function App() {
       setVeo31State(prev => ({
         ...prev,
         prompt: item.settings.prompt,
-        images: item.settings.images,
+        images: Array.isArray(item.settings.images) ? item.settings.images : [],
         aspectRatio: item.settings.aspectRatio,
         duration: item.settings.duration,
         resolution: item.settings.resolution,
@@ -2761,7 +3353,7 @@ function App() {
       setWanState(prev => ({
         ...prev,
         prompt: item.settings.prompt,
-        images: item.settings.images,
+        images: Array.isArray(item.settings.images) ? item.settings.images : [],
         negativePrompt: item.settings.negativePrompt,
         imageSize: item.settings.imageSize,
         numImages: item.settings.numImages,
@@ -2787,7 +3379,7 @@ function App() {
       setFlux2ProState(prev => ({
         ...prev,
         prompt: item.settings.prompt,
-        images: item.settings.images,
+        images: Array.isArray(item.settings.images) ? item.settings.images : [],
         imageSize: item.settings.imageSize,
         seed: item.settings.seed,
         safetyTolerance: item.settings.safetyTolerance,
@@ -2799,7 +3391,7 @@ function App() {
       setGemini3State(prev => ({
         ...prev,
         prompt: item.settings.prompt,
-        images: item.settings.images,
+        images: Array.isArray(item.settings.images) ? item.settings.images : [],
         numImages: item.settings.numImages,
         seed: item.settings.seed,
         aspectRatio: item.settings.aspectRatio,
@@ -2812,15 +3404,95 @@ function App() {
     }
   };
 
-  return (
-    <div className="flex min-h-screen bg-background">
-      <Sidebar activeView={activeView} setActiveView={setActiveView} />
+  // Send JSON prompt to a model
+  const handleSendToModel = (modelId, prompt, selectedGirl) => {
+    // Create girl image object if girl is selected
+    const girlImage = selectedGirl ? {
+      id: `girl-${selectedGirl.id}-${Date.now()}`,
+      file: null,
+      preview: selectedGirl.image_url,
+      name: selectedGirl.name,
+      isFromUrl: true
+    } : null;
 
-      <div className="flex-1">
-        {activeView === 'girls' ? (
-          <GirlsView />
-        ) : (
-          <div className="p-4 md:p-8">
+    // Switch to generate view and the selected tab
+    setActiveView('generate');
+    setActiveTab(modelId);
+
+    // Update the state for the selected model
+    // Replace existing images with just the girl image if provided, otherwise keep empty
+    if (modelId === 'seedream') {
+      setSeedDreamState(prev => ({
+        ...prev,
+        prompt,
+        images: girlImage ? [girlImage] : []
+      }));
+    } else if (modelId === 'nanobanana') {
+      setNanoBananaState(prev => ({
+        ...prev,
+        prompt,
+        images: girlImage ? [girlImage] : []
+      }));
+    } else if (modelId === 'veo31') {
+      setVeo31State(prev => ({
+        ...prev,
+        prompt,
+        images: girlImage ? [girlImage] : []
+      }));
+    } else if (modelId === 'wan') {
+      setWanState(prev => ({
+        ...prev,
+        prompt,
+        images: girlImage ? [girlImage] : []
+      }));
+    } else if (modelId === 'wan25') {
+      // Wan 2.5 uses single image, not array
+      setWan25State(prev => ({
+        ...prev,
+        prompt,
+        image: girlImage || null
+      }));
+    } else if (modelId === 'flux2pro') {
+      setFlux2ProState(prev => ({
+        ...prev,
+        prompt,
+        images: girlImage ? [girlImage] : []
+      }));
+    } else if (modelId === 'gemini3') {
+      setGemini3State(prev => ({
+        ...prev,
+        prompt,
+        images: girlImage ? [girlImage] : []
+      }));
+    }
+  };
+
+  const renderView = () => {
+    if (activeView === 'girls') {
+      return <GirlsView />;
+    }
+    if (activeView === 'json-prompter') {
+      return <JsonPrompterView onSendToModel={handleSendToModel} />;
+    }
+    if (activeView === 'settings') {
+      return <SettingsView />;
+    }
+    if (activeView === 'history') {
+      return (
+        <HistoryView
+          history={history}
+          isLoading={isLoadingHistory}
+          onRestore={(item) => {
+            restoreFromHistory(item);
+            setActiveView('generate');
+          }}
+          onDelete={handleDeleteHistory}
+        />
+      );
+    }
+
+    return (
+      <div className="p-4 md:p-8">
             <div className="max-w-7xl mx-auto">
               <div className="mb-8">
                 <h1 className="text-4xl font-bold mb-2">Generate Content</h1>
@@ -2828,7 +3500,7 @@ function App() {
                 {!isApiKeyConfigured() && (
                   <Alert variant="destructive" className="mt-4">
                     <AlertDescription>
-                      API key not configured. Please set <code>VITE_FAL_KEY</code> in your <code>.env</code> file.
+                      API key not configured. Add it in Settings or set <code>VITE_FAL_KEY</code> in your <code>.env</code> file.
                     </AlertDescription>
                   </Alert>
                 )}
@@ -2901,79 +3573,17 @@ function App() {
             />
           </TabsContent>
         </Tabs>
-
-        {isLoadingHistory ? (
-          <Card className="mt-8">
-            <CardHeader>
-              <CardTitle>Generation History</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">Loading history...</p>
-            </CardContent>
-          </Card>
-        ) : history.length > 0 ? (
-          <Card className="mt-8">
-            <CardHeader>
-              <CardTitle>Generation History</CardTitle>
-              <CardDescription>Click on any image to restore its settings. Right-click to delete.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
-                {history.map((item) => (
-                  <div
-                    key={item.id}
-                    className="group relative"
-                  >
-                    <div
-                      className="aspect-square rounded-lg overflow-hidden border-2 border-border group-hover:border-primary transition-colors cursor-pointer"
-                      onClick={() => restoreFromHistory(item)}
-                    >
-                      {item.result?.images?.[0] && (
-                        <img
-                          src={item.result.images[0].url}
-                          alt={item.settings.prompt}
-                          className="w-full h-full object-cover"
-                        />
-                      )}
-                      {item.result?.video && (
-                        <video
-                          src={item.result.video.url}
-                          className="w-full h-full object-cover"
-                          muted
-                        />
-                      )}
-                    </div>
-                    <Button
-                      variant="destructive"
-                      size="icon"
-                      className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteHistory(item.id);
-                      }}
-                    >
-                      ×
-                    </Button>
-                    <div className="mt-2 space-y-1">
-                      <div className="text-xs font-medium text-primary">
-                        {item.type === 'seedream' ? 'SeeD Dream' : item.type === 'nanobanana' ? 'Nano Banana' : item.type === 'veo31' ? 'Veo 3.1' : item.type === 'wan' ? 'Wan v2.6' : item.type === 'wan25' ? 'Wan 2.5' : item.type === 'flux2pro' ? 'Flux 2 Pro' : 'Gemini 3'}
-                      </div>
-                      <div className="text-xs text-muted-foreground line-clamp-2">
-                        {item.settings.prompt}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {item.timestamp}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        ) : null}
             </div>
           </div>
-        )}
+    );
+  };
+
+  return (
+    <div className="flex min-h-screen bg-background">
+      <Sidebar activeView={activeView} setActiveView={setActiveView} />
+
+      <div className="flex-1">
+        {renderView()}
       </div>
     </div>
   );

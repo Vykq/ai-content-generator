@@ -1,25 +1,25 @@
-import express from 'express';
-import sqlite3 from 'sqlite3';
-import cors from 'cors';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import express from "express";
+import sqlite3 from "sqlite3";
+import cors from "cors";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
-const port = 3001;
+const port = Number(process.env.PORT) || 3002;
 
 // Middleware
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ limit: "50mb" }));
 
 // Initialize SQLite database
-const db = new sqlite3.Database(join(__dirname, 'history.db'), (err) => {
+const db = new sqlite3.Database(join(__dirname, "history.db"), (err) => {
   if (err) {
-    console.error('Error opening database:', err);
+    console.error("Error opening database:", err);
   } else {
-    console.log('Connected to SQLite database');
+    console.log("Connected to SQLite database");
     initializeDatabase();
   }
 });
@@ -27,7 +27,8 @@ const db = new sqlite3.Database(join(__dirname, 'history.db'), (err) => {
 // Create tables
 function initializeDatabase() {
   // History table
-  db.run(`
+  db.run(
+    `
     CREATE TABLE IF NOT EXISTS history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       type TEXT NOT NULL,
@@ -37,16 +38,19 @@ function initializeDatabase() {
       result TEXT NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
-  `, (err) => {
-    if (err) {
-      console.error('Error creating history table:', err);
-    } else {
-      console.log('History table ready');
+  `,
+    (err) => {
+      if (err) {
+        console.error("Error creating history table:", err);
+      } else {
+        console.log("History table ready");
+      }
     }
-  });
+  );
 
   // Girls table
-  db.run(`
+  db.run(
+    `
     CREATE TABLE IF NOT EXISTS girls (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -55,52 +59,53 @@ function initializeDatabase() {
       default_prompt TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
-  `, (err) => {
-    if (err) {
-      console.error('Error creating girls table:', err);
-    } else {
-      console.log('Girls table ready');
-      // Add default_prompt column if it doesn't exist (for existing databases)
-      db.run(`ALTER TABLE girls ADD COLUMN default_prompt TEXT`, (alterErr) => {
-        if (alterErr && !alterErr.message.includes('duplicate column')) {
-          console.error('Error adding default_prompt column:', alterErr);
-        }
-      });
+  `,
+    (err) => {
+      if (err) {
+        console.error("Error creating girls table:", err);
+      } else {
+        console.log("Girls table ready");
+        // Add default_prompt column if it doesn't exist (for existing databases)
+        db.run(
+          `ALTER TABLE girls ADD COLUMN default_prompt TEXT`,
+          (alterErr) => {
+            if (alterErr && !alterErr.message.includes("duplicate column")) {
+              console.error("Error adding default_prompt column:", alterErr);
+            }
+          }
+        );
+      }
     }
-  });
+  );
 }
 
 // API Routes
 
 // Get all history items
-app.get('/api/history', (req, res) => {
-  db.all(
-    'SELECT * FROM history ORDER BY created_at DESC',
-    [],
-    (err, rows) => {
-      if (err) {
-        console.error('Error fetching history:', err);
-        res.status(500).json({ error: 'Failed to fetch history' });
-      } else {
-        const history = rows.map(row => ({
-          id: row.id,
-          type: row.type,
-          timestamp: row.timestamp,
-          settings: JSON.parse(row.settings),
-          result: JSON.parse(row.result)
-        }));
-        res.json(history);
-      }
+app.get("/api/history", (req, res) => {
+  db.all("SELECT * FROM history ORDER BY created_at DESC", [], (err, rows) => {
+    if (err) {
+      console.error("Error fetching history:", err);
+      res.status(500).json({ error: "Failed to fetch history" });
+    } else {
+      const history = rows.map((row) => ({
+        id: row.id,
+        type: row.type,
+        timestamp: row.timestamp,
+        settings: JSON.parse(row.settings),
+        result: JSON.parse(row.result),
+      }));
+      res.json(history);
     }
-  );
+  });
 });
 
 // Add new history item
-app.post('/api/history', (req, res) => {
+app.post("/api/history", (req, res) => {
   const { type, timestamp, settings, result } = req.body;
 
   if (!type || !timestamp || !settings || !result) {
-    return res.status(400).json({ error: 'Missing required fields' });
+    return res.status(400).json({ error: "Missing required fields" });
   }
 
   db.run(
@@ -109,21 +114,21 @@ app.post('/api/history', (req, res) => {
     [
       type,
       timestamp,
-      settings.prompt || '',
+      settings.prompt || "",
       JSON.stringify(settings),
-      JSON.stringify(result)
+      JSON.stringify(result),
     ],
-    function(err) {
+    function (err) {
       if (err) {
-        console.error('Error adding history item:', err);
-        res.status(500).json({ error: 'Failed to add history item' });
+        console.error("Error adding history item:", err);
+        res.status(500).json({ error: "Failed to add history item" });
       } else {
         res.json({
           id: this.lastID,
           type,
           timestamp,
           settings,
-          result
+          result,
         });
       }
     }
@@ -131,27 +136,27 @@ app.post('/api/history', (req, res) => {
 });
 
 // Delete history item
-app.delete('/api/history/:id', (req, res) => {
+app.delete("/api/history/:id", (req, res) => {
   const { id } = req.params;
 
-  db.run('DELETE FROM history WHERE id = ?', [id], function(err) {
+  db.run("DELETE FROM history WHERE id = ?", [id], function (err) {
     if (err) {
-      console.error('Error deleting history item:', err);
-      res.status(500).json({ error: 'Failed to delete history item' });
+      console.error("Error deleting history item:", err);
+      res.status(500).json({ error: "Failed to delete history item" });
     } else {
-      res.json({ message: 'History item deleted', deletedId: id });
+      res.json({ message: "History item deleted", deletedId: id });
     }
   });
 });
 
 // Clear all history
-app.delete('/api/history', (req, res) => {
-  db.run('DELETE FROM history', [], function(err) {
+app.delete("/api/history", (req, res) => {
+  db.run("DELETE FROM history", [], function (err) {
     if (err) {
-      console.error('Error clearing history:', err);
-      res.status(500).json({ error: 'Failed to clear history' });
+      console.error("Error clearing history:", err);
+      res.status(500).json({ error: "Failed to clear history" });
     } else {
-      res.json({ message: 'All history cleared', deletedCount: this.changes });
+      res.json({ message: "All history cleared", deletedCount: this.changes });
     }
   });
 });
@@ -159,30 +164,26 @@ app.delete('/api/history', (req, res) => {
 // Girls API Routes
 
 // Get all girls
-app.get('/api/girls', (req, res) => {
-  db.all(
-    'SELECT * FROM girls ORDER BY created_at DESC',
-    [],
-    (err, rows) => {
-      if (err) {
-        console.error('Error fetching girls:', err);
-        res.status(500).json({ error: 'Failed to fetch girls' });
-      } else {
-        res.json(rows);
-      }
+app.get("/api/girls", (req, res) => {
+  db.all("SELECT * FROM girls ORDER BY created_at DESC", [], (err, rows) => {
+    if (err) {
+      console.error("Error fetching girls:", err);
+      res.status(500).json({ error: "Failed to fetch girls" });
+    } else {
+      res.json(rows);
     }
-  );
+  });
 });
 
 // Get single girl by id
-app.get('/api/girls/:id', (req, res) => {
+app.get("/api/girls/:id", (req, res) => {
   const { id } = req.params;
-  db.get('SELECT * FROM girls WHERE id = ?', [id], (err, row) => {
+  db.get("SELECT * FROM girls WHERE id = ?", [id], (err, row) => {
     if (err) {
-      console.error('Error fetching girl:', err);
-      res.status(500).json({ error: 'Failed to fetch girl' });
+      console.error("Error fetching girl:", err);
+      res.status(500).json({ error: "Failed to fetch girl" });
     } else if (!row) {
-      res.status(404).json({ error: 'Girl not found' });
+      res.status(404).json({ error: "Girl not found" });
     } else {
       res.json(row);
     }
@@ -190,23 +191,25 @@ app.get('/api/girls/:id', (req, res) => {
 });
 
 // Create new girl
-app.post('/api/girls', (req, res) => {
+app.post("/api/girls", (req, res) => {
   const { name, handle, image_url, default_prompt } = req.body;
 
   if (!name || !handle || !image_url) {
-    return res.status(400).json({ error: 'Missing required fields: name, handle, image_url' });
+    return res
+      .status(400)
+      .json({ error: "Missing required fields: name, handle, image_url" });
   }
 
   db.run(
     `INSERT INTO girls (name, handle, image_url, default_prompt) VALUES (?, ?, ?, ?)`,
     [name, handle, image_url, default_prompt || null],
-    function(err) {
+    function (err) {
       if (err) {
-        if (err.message.includes('UNIQUE constraint failed')) {
-          res.status(400).json({ error: 'Handle already exists' });
+        if (err.message.includes("UNIQUE constraint failed")) {
+          res.status(400).json({ error: "Handle already exists" });
         } else {
-          console.error('Error creating girl:', err);
-          res.status(500).json({ error: 'Failed to create girl' });
+          console.error("Error creating girl:", err);
+          res.status(500).json({ error: "Failed to create girl" });
         }
       } else {
         res.json({
@@ -214,7 +217,7 @@ app.post('/api/girls', (req, res) => {
           name,
           handle,
           image_url,
-          default_prompt
+          default_prompt,
         });
       }
     }
@@ -222,27 +225,29 @@ app.post('/api/girls', (req, res) => {
 });
 
 // Update girl
-app.put('/api/girls/:id', (req, res) => {
+app.put("/api/girls/:id", (req, res) => {
   const { id } = req.params;
   const { name, handle, image_url, default_prompt } = req.body;
 
   if (!name || !handle || !image_url) {
-    return res.status(400).json({ error: 'Missing required fields: name, handle, image_url' });
+    return res
+      .status(400)
+      .json({ error: "Missing required fields: name, handle, image_url" });
   }
 
   db.run(
     `UPDATE girls SET name = ?, handle = ?, image_url = ?, default_prompt = ? WHERE id = ?`,
     [name, handle, image_url, default_prompt || null, id],
-    function(err) {
+    function (err) {
       if (err) {
-        if (err.message.includes('UNIQUE constraint failed')) {
-          res.status(400).json({ error: 'Handle already exists' });
+        if (err.message.includes("UNIQUE constraint failed")) {
+          res.status(400).json({ error: "Handle already exists" });
         } else {
-          console.error('Error updating girl:', err);
-          res.status(500).json({ error: 'Failed to update girl' });
+          console.error("Error updating girl:", err);
+          res.status(500).json({ error: "Failed to update girl" });
         }
       } else if (this.changes === 0) {
-        res.status(404).json({ error: 'Girl not found' });
+        res.status(404).json({ error: "Girl not found" });
       } else {
         res.json({ id: parseInt(id), name, handle, image_url, default_prompt });
       }
@@ -251,17 +256,17 @@ app.put('/api/girls/:id', (req, res) => {
 });
 
 // Delete girl
-app.delete('/api/girls/:id', (req, res) => {
+app.delete("/api/girls/:id", (req, res) => {
   const { id } = req.params;
 
-  db.run('DELETE FROM girls WHERE id = ?', [id], function(err) {
+  db.run("DELETE FROM girls WHERE id = ?", [id], function (err) {
     if (err) {
-      console.error('Error deleting girl:', err);
-      res.status(500).json({ error: 'Failed to delete girl' });
+      console.error("Error deleting girl:", err);
+      res.status(500).json({ error: "Failed to delete girl" });
     } else if (this.changes === 0) {
-      res.status(404).json({ error: 'Girl not found' });
+      res.status(404).json({ error: "Girl not found" });
     } else {
-      res.json({ message: 'Girl deleted', deletedId: id });
+      res.json({ message: "Girl deleted", deletedId: id });
     }
   });
 });
@@ -272,12 +277,12 @@ app.listen(port, () => {
 });
 
 // Graceful shutdown
-process.on('SIGINT', () => {
+process.on("SIGINT", () => {
   db.close((err) => {
     if (err) {
-      console.error('Error closing database:', err);
+      console.error("Error closing database:", err);
     } else {
-      console.log('Database connection closed');
+      console.log("Database connection closed");
     }
     process.exit(0);
   });
