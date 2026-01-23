@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { isApiKeyConfigured, setFalApiKey } from './services/falService';
 import { uploadFiles, uploadFile, submitEditRequest, submitNanoBananaRequest, submitVeo31Request, submitWanRequest, submitWan25Request, submitFlux2ProRequest, submitGemini3Request } from './services/falService';
 import { fetchHistory, addHistoryItem, deleteHistoryItem } from './services/historyService';
+import { getCurrentUser, isFanVueConnected, getOAuthConfig, saveOAuthConfig, clearOAuthConfig, initiateOAuthFlow, handleOAuthCallback, clearFanVueTokens } from './services/fanvueService';
 import ImageUpload from './components/ImageUpload';
 import Sidebar from './components/Sidebar';
 import GirlsView from './components/GirlsView';
@@ -21,7 +22,8 @@ const STORAGE_KEYS = {
   falApiKey: 'fal_api_key',
   openAiApiKey: 'openai_api_key',
   defaultJsonPrompt: 'default_json_prompt',
-  jsonPromptHistory: 'json_prompt_history'
+  jsonPromptHistory: 'json_prompt_history',
+  fanvueToken: 'fanvue_api_token'
 };
 
 function readStoredValue(key, fallback = '') {
@@ -36,7 +38,48 @@ function normalizeApiKey(rawKey = '') {
   return withoutQuotes.replace(/\s+/g, '');
 }
 
-function SeedDreamPanel({ state, setState, onGenerationComplete }) {
+// Component for sending generated images to other generators
+function SendToGeneratorButton({ imageUrl, onSend }) {
+  const [selectedGenerator, setSelectedGenerator] = useState('');
+
+  const generators = [
+    { id: 'seedream', label: 'SeeD Dream v4.5' },
+    { id: 'nanobanana', label: 'Nano Banana Pro' },
+    { id: 'veo31', label: 'Veo 3.1' },
+    { id: 'wan', label: 'Wan v2.6' },
+    { id: 'wan25', label: 'Wan 2.5' },
+    { id: 'flux2pro', label: 'Flux 2 Pro' },
+    { id: 'gemini3', label: 'Gemini 3' }
+  ];
+
+  const handleSend = () => {
+    if (selectedGenerator && imageUrl) {
+      onSend(imageUrl, selectedGenerator);
+    }
+  };
+
+  return (
+    <div className="flex gap-2 items-center">
+      <Select value={selectedGenerator} onValueChange={setSelectedGenerator}>
+        <SelectTrigger className="w-[200px]">
+          <SelectValue placeholder="Select generator..." />
+        </SelectTrigger>
+        <SelectContent>
+          {generators.map((gen) => (
+            <SelectItem key={gen.id} value={gen.id}>
+              {gen.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Button onClick={handleSend} disabled={!selectedGenerator}>
+        Send
+      </Button>
+    </div>
+  );
+}
+
+function SeedDreamPanel({ state, setState, onGenerationComplete, onSendImage }) {
   const {
     prompt,
     images,
@@ -349,6 +392,10 @@ function SeedDreamPanel({ state, setState, onGenerationComplete }) {
                         {image.height && <p>Height: {image.height}px</p>}
                         {image.content_type && <p>Type: {image.content_type}</p>}
                       </div>
+                      <div className="mt-3 pt-3 border-t border-border">
+                        <Label className="text-xs mb-2 block">Send to Generator:</Label>
+                        <SendToGeneratorButton imageUrl={image.url} onSend={onSendImage} />
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -373,7 +420,7 @@ function SeedDreamPanel({ state, setState, onGenerationComplete }) {
   );
 }
 
-function NanoBananaPanel({ state, setState, onGenerationComplete }) {
+function NanoBananaPanel({ state, setState, onGenerationComplete, onSendImage }) {
   const {
     prompt,
     images,
@@ -754,6 +801,10 @@ function NanoBananaPanel({ state, setState, onGenerationComplete }) {
                         {image.height && <p>Height: {image.height}px</p>}
                         {image.content_type && <p>Type: {image.content_type}</p>}
                       </div>
+                      <div className="mt-3 pt-3 border-t border-border">
+                        <Label className="text-xs mb-2 block">Send to Generator:</Label>
+                        <SendToGeneratorButton imageUrl={image.url} onSend={onSendImage} />
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -772,7 +823,7 @@ function NanoBananaPanel({ state, setState, onGenerationComplete }) {
   );
 }
 
-function Veo31Panel({ state, setState, onGenerationComplete }) {
+function Veo31Panel({ state, setState, onGenerationComplete, onSendImage }) {
   const {
     prompt,
     images,
@@ -1097,7 +1148,7 @@ function Veo31Panel({ state, setState, onGenerationComplete }) {
   );
 }
 
-function WanPanel({ state, setState, onGenerationComplete }) {
+function WanPanel({ state, setState, onGenerationComplete, onSendImage }) {
   const {
     prompt,
     images,
@@ -1448,7 +1499,7 @@ function WanPanel({ state, setState, onGenerationComplete }) {
   );
 }
 
-function Wan25Panel({ state, setState, onGenerationComplete }) {
+function Wan25Panel({ state, setState, onGenerationComplete, onSendImage }) {
   const {
     prompt,
     image,
@@ -1846,7 +1897,7 @@ function Wan25Panel({ state, setState, onGenerationComplete }) {
   );
 }
 
-function Flux2ProPanel({ state, setState, onGenerationComplete }) {
+function Flux2ProPanel({ state, setState, onGenerationComplete, onSendImage }) {
   const {
     prompt,
     images,
@@ -2188,7 +2239,7 @@ function Flux2ProPanel({ state, setState, onGenerationComplete }) {
   );
 }
 
-function Gemini3Panel({ state, setState, onGenerationComplete }) {
+function Gemini3Panel({ state, setState, onGenerationComplete, onSendImage }) {
   const {
     prompt,
     images,
@@ -2585,7 +2636,13 @@ function SettingsView() {
   const [falApiKey, setFalApiKeyState] = useState(() => readStoredValue(STORAGE_KEYS.falApiKey));
   const [openAiApiKey, setOpenAiApiKey] = useState(() => readStoredValue(STORAGE_KEYS.openAiApiKey));
   const [defaultJsonPrompt, setDefaultJsonPrompt] = useState(() => readStoredValue(STORAGE_KEYS.defaultJsonPrompt));
+  const [fanvueUser, setFanvueUser] = useState(null);
+  const [isFanvueConnecting, setIsFanvueConnecting] = useState(false);
   const [status, setStatus] = useState('');
+
+  // OAuth config state
+  const [oauthConfig, setOauthConfig] = useState(() => getOAuthConfig());
+  const [showOAuthSetup, setShowOAuthSetup] = useState(false);
 
   const handleSave = () => {
     const trimmedFalKey = falApiKey.trim();
@@ -2610,6 +2667,108 @@ function SettingsView() {
     setStatus('Settings saved.');
     setTimeout(() => setStatus(''), 2000);
   };
+
+  const handleSaveOAuthConfig = () => {
+    if (!oauthConfig.clientId || !oauthConfig.clientSecret || !oauthConfig.redirectUri) {
+      setStatus('Please fill in all OAuth configuration fields.');
+      setTimeout(() => setStatus(''), 3000);
+      return;
+    }
+
+    saveOAuthConfig(oauthConfig);
+    setShowOAuthSetup(false);
+    setStatus('OAuth configuration saved.');
+    setTimeout(() => setStatus(''), 2000);
+  };
+
+  const handleConnectFanVue = async () => {
+    const config = getOAuthConfig();
+
+    if (!config.clientId || !config.clientSecret || !config.redirectUri) {
+      setShowOAuthSetup(true);
+      setStatus('Please configure OAuth settings first.');
+      setTimeout(() => setStatus(''), 3000);
+      return;
+    }
+
+    setIsFanvueConnecting(true);
+    setStatus('Redirecting to FanVue...');
+
+    try {
+      // Initiate OAuth flow - this will redirect the user
+      await initiateOAuthFlow({
+        clientId: config.clientId,
+        redirectUri: config.redirectUri
+      });
+    } catch (error) {
+      setStatus(`Connection failed: ${error.message}`);
+      setTimeout(() => setStatus(''), 5000);
+      setIsFanvueConnecting(false);
+    }
+  };
+
+  const handleDisconnectFanVue = () => {
+    clearFanVueTokens();
+    setFanvueUser(null);
+    setStatus('FanVue account disconnected.');
+    setTimeout(() => setStatus(''), 2000);
+  };
+
+  const handleClearOAuthConfig = () => {
+    clearOAuthConfig();
+    setOauthConfig({ clientId: '', clientSecret: '', redirectUri: '' });
+    setShowOAuthSetup(false);
+    setStatus('OAuth configuration cleared.');
+    setTimeout(() => setStatus(''), 2000);
+  };
+
+  // Check connection on mount and handle OAuth callback
+  useEffect(() => {
+    const checkFanVueConnection = async () => {
+      // Check if this is an OAuth callback
+      const urlParams = new URLSearchParams(window.location.search);
+      const code = urlParams.get('code');
+      const state = urlParams.get('state');
+
+      if (code && state) {
+        setIsFanvueConnecting(true);
+        setStatus('Completing FanVue connection...');
+
+        try {
+          const config = getOAuthConfig();
+          await handleOAuthCallback(code, state, {
+            clientId: config.clientId,
+            clientSecret: config.clientSecret
+          });
+
+          // Fetch user info
+          const user = await getCurrentUser();
+          setFanvueUser(user);
+          setStatus(`Connected as ${user.username || user.name || 'FanVue user'}`);
+
+          // Clear URL parameters
+          window.history.replaceState({}, document.title, window.location.pathname);
+
+          setTimeout(() => setStatus(''), 3000);
+        } catch (error) {
+          setStatus(`Connection failed: ${error.message}`);
+          setTimeout(() => setStatus(''), 5000);
+        } finally {
+          setIsFanvueConnecting(false);
+        }
+      } else if (isFanVueConnected()) {
+        // Check existing connection
+        try {
+          const user = await getCurrentUser();
+          setFanvueUser(user);
+        } catch (error) {
+          // Invalid/expired token, clear it
+          clearFanVueTokens();
+        }
+      }
+    };
+    checkFanVueConnection();
+  }, []);
 
   return (
     <div className="p-4 md:p-8">
@@ -2645,6 +2804,112 @@ function SettingsView() {
                 placeholder="Paste your OpenAI API key"
               />
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>FanVue Integration</CardTitle>
+            <CardDescription>Connect your FanVue account to upload generated content directly.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {fanvueUser ? (
+              <div className="space-y-3">
+                <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-green-600 dark:text-green-400">✓</span>
+                    <span className="font-medium text-green-900 dark:text-green-100">Connected</span>
+                  </div>
+                  <p className="text-sm text-green-700 dark:text-green-300">
+                    Logged in as: {fanvueUser.username || fanvueUser.name || 'FanVue user'}
+                  </p>
+                </div>
+                <Button variant="destructive" onClick={handleDisconnectFanVue}>
+                  Disconnect FanVue
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {showOAuthSetup ? (
+                  <div className="space-y-4 p-4 border border-border rounded-lg">
+                    <div>
+                      <h3 className="font-medium mb-2">OAuth Configuration</h3>
+                      <p className="text-xs text-muted-foreground mb-4">
+                        Create an OAuth app in your FanVue developer settings to get these credentials.
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="client-id">Client ID</Label>
+                      <Input
+                        id="client-id"
+                        value={oauthConfig.clientId}
+                        onChange={(e) => setOauthConfig(prev => ({ ...prev, clientId: e.target.value }))}
+                        placeholder="Your FanVue OAuth Client ID"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="client-secret">Client Secret</Label>
+                      <Input
+                        id="client-secret"
+                        type="password"
+                        value={oauthConfig.clientSecret}
+                        onChange={(e) => setOauthConfig(prev => ({ ...prev, clientSecret: e.target.value }))}
+                        placeholder="Your FanVue OAuth Client Secret"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="redirect-uri">Redirect URI</Label>
+                      <Input
+                        id="redirect-uri"
+                        value={oauthConfig.redirectUri}
+                        onChange={(e) => setOauthConfig(prev => ({ ...prev, redirectUri: e.target.value }))}
+                        placeholder={`${window.location.origin}/settings`}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Use: {window.location.origin} (add /settings or your preferred path)
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button onClick={handleSaveOAuthConfig}>
+                        Save Configuration
+                      </Button>
+                      <Button variant="outline" onClick={() => setShowOAuthSetup(false)}>
+                        Cancel
+                      </Button>
+                      {oauthConfig.clientId && (
+                        <Button variant="destructive" onClick={handleClearOAuthConfig}>
+                          Clear
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                      <p className="text-sm text-blue-900 dark:text-blue-100 mb-2">
+                        FanVue uses OAuth 2.0 for secure authentication.
+                      </p>
+                      <p className="text-xs text-blue-700 dark:text-blue-300">
+                        {oauthConfig.clientId
+                          ? 'OAuth configured. Click Connect to authorize your account.'
+                          : 'You need to configure OAuth credentials first.'}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={handleConnectFanVue}
+                        disabled={isFanvueConnecting || !oauthConfig.clientId}
+                      >
+                        {isFanvueConnecting ? 'Connecting...' : 'Connect FanVue'}
+                      </Button>
+                      <Button variant="outline" onClick={() => setShowOAuthSetup(true)}>
+                        {oauthConfig.clientId ? 'Edit OAuth Config' : 'Setup OAuth'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -3467,6 +3732,60 @@ function App() {
     }
   };
 
+  // Send generated image to another generator
+  const handleSendImageToGenerator = (imageUrl, targetModelId) => {
+    const imageObject = {
+      id: `generated-${Date.now()}`,
+      file: null,
+      preview: imageUrl,
+      name: 'Generated Image',
+      isFromUrl: true
+    };
+
+    // Switch to generate view and the selected tab
+    setActiveView('generate');
+    setActiveTab(targetModelId);
+
+    // Update the state for the selected model
+    if (targetModelId === 'seedream') {
+      setSeedDreamState(prev => ({
+        ...prev,
+        images: [...(Array.isArray(prev.images) ? prev.images : []), imageObject]
+      }));
+    } else if (targetModelId === 'nanobanana') {
+      setNanoBananaState(prev => ({
+        ...prev,
+        images: [...(Array.isArray(prev.images) ? prev.images : []), imageObject]
+      }));
+    } else if (targetModelId === 'veo31') {
+      setVeo31State(prev => ({
+        ...prev,
+        images: [...(Array.isArray(prev.images) ? prev.images : []), imageObject]
+      }));
+    } else if (targetModelId === 'wan') {
+      setWanState(prev => ({
+        ...prev,
+        images: [...(Array.isArray(prev.images) ? prev.images : []), imageObject]
+      }));
+    } else if (targetModelId === 'wan25') {
+      // Wan 2.5 uses single image, replace it
+      setWan25State(prev => ({
+        ...prev,
+        image: imageObject
+      }));
+    } else if (targetModelId === 'flux2pro') {
+      setFlux2ProState(prev => ({
+        ...prev,
+        images: [...(Array.isArray(prev.images) ? prev.images : []), imageObject]
+      }));
+    } else if (targetModelId === 'gemini3') {
+      setGemini3State(prev => ({
+        ...prev,
+        images: [...(Array.isArray(prev.images) ? prev.images : []), imageObject]
+      }));
+    }
+  };
+
   const renderView = () => {
     if (activeView === 'girls') {
       return <GirlsView />;
@@ -3522,6 +3841,7 @@ function App() {
               state={seedDreamState}
               setState={setSeedDreamState}
               onGenerationComplete={(settings, result) => addToHistory('seedream', settings, result)}
+              onSendImage={handleSendImageToGenerator}
             />
           </TabsContent>
 
@@ -3530,6 +3850,7 @@ function App() {
               state={nanoBananaState}
               setState={setNanoBananaState}
               onGenerationComplete={(settings, result) => addToHistory('nanobanana', settings, result)}
+              onSendImage={handleSendImageToGenerator}
             />
           </TabsContent>
 
@@ -3538,6 +3859,7 @@ function App() {
               state={veo31State}
               setState={setVeo31State}
               onGenerationComplete={(settings, result) => addToHistory('veo31', settings, result)}
+              onSendImage={handleSendImageToGenerator}
             />
           </TabsContent>
 
@@ -3546,6 +3868,7 @@ function App() {
               state={wanState}
               setState={setWanState}
               onGenerationComplete={(settings, result) => addToHistory('wan', settings, result)}
+              onSendImage={handleSendImageToGenerator}
             />
           </TabsContent>
 
@@ -3554,6 +3877,7 @@ function App() {
               state={wan25State}
               setState={setWan25State}
               onGenerationComplete={(settings, result) => addToHistory('wan25', settings, result)}
+              onSendImage={handleSendImageToGenerator}
             />
           </TabsContent>
 
@@ -3562,6 +3886,7 @@ function App() {
               state={flux2ProState}
               setState={setFlux2ProState}
               onGenerationComplete={(settings, result) => addToHistory('flux2pro', settings, result)}
+              onSendImage={handleSendImageToGenerator}
             />
           </TabsContent>
 
@@ -3570,6 +3895,7 @@ function App() {
               state={gemini3State}
               setState={setGemini3State}
               onGenerationComplete={(settings, result) => addToHistory('gemini3', settings, result)}
+              onSendImage={handleSendImageToGenerator}
             />
           </TabsContent>
         </Tabs>
