@@ -1,4 +1,5 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3002/api';
+// Use relative URL in production, localhost in development
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:2999/api' : '/api');
 
 export async function fetchGirls() {
   try {

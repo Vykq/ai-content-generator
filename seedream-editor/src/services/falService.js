@@ -484,6 +484,74 @@ export async function submitGemini3Request({
 }
 
 /**
+ * Submit an image-to-image request to fal.ai Z-Image Turbo
+ * @param {Object} params - Request parameters
+ * @param {string} params.prompt - The editing prompt
+ * @param {string} params.imageUrl - URL of image for image-to-image generation
+ * @param {Function} params.onQueueUpdate - Queue update callback
+ * @param {boolean} params.logs - Enable logs
+ * @param {string} params.imageSize - Image size preset (square_hd, square, portrait_4_3, portrait_16_9, landscape_4_3, landscape_16_9, auto)
+ * @param {number} params.numInferenceSteps - Number of inference steps (1-8)
+ * @param {number} params.numImages - Number of images to generate (1-4)
+ * @param {number} params.strength - Transformation strength (0-1)
+ * @param {number} params.seed - Random seed for reproducibility
+ * @param {string} params.outputFormat - Output format (jpeg, png, webp)
+ * @param {boolean} params.enableSafetyChecker - Enable content filtering
+ * @param {boolean} params.enablePromptExpansion - Enable prompt expansion
+ * @returns {Promise<Object>} - The result data
+ */
+export async function submitZImageTurboRequest({
+  prompt,
+  imageUrl,
+  onQueueUpdate,
+  logs = true,
+  imageSize = 'auto',
+  numInferenceSteps = 8,
+  numImages = 1,
+  strength = 0.6,
+  seed = null,
+  outputFormat = 'png',
+  enableSafetyChecker = true,
+  enablePromptExpansion = false
+}) {
+  ensureFalConfigured();
+
+  try {
+    const input = {
+      prompt,
+      image_url: imageUrl,
+      image_size: imageSize,
+      num_inference_steps: numInferenceSteps,
+      num_images: numImages,
+      strength,
+      output_format: outputFormat,
+      enable_safety_checker: enableSafetyChecker,
+      enable_prompt_expansion: enablePromptExpansion
+    };
+
+    // Only add seed if provided
+    if (seed !== null && seed !== undefined) {
+      input.seed = seed;
+    }
+
+    const result = await fal.subscribe('fal-ai/z-image/turbo/image-to-image', {
+      input,
+      logs,
+      onQueueUpdate
+    });
+
+    console.log('Z-Image Turbo API Result:', result);
+    console.log('Result data:', result.data);
+    console.log('Result images:', result.data?.images);
+
+    return result.data || result;
+  } catch (error) {
+    console.error('Error submitting Z-Image Turbo request:', error);
+    throw new Error(`Failed to submit request: ${error.message}`);
+  }
+}
+
+/**
  * Check if API key is configured
  * @returns {boolean}
  */

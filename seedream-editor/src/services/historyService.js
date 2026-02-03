@@ -1,25 +1,36 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3002/api';
+import { getAuthToken } from './authService';
 
-export async function fetchHistory() {
+// Use relative URL in production, localhost in development
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:2999/api' : '/api');
+
+export async function fetchHistory(page = 1, limit = 24) {
   try {
-    const response = await fetch(`${API_URL}/history`);
+    const response = await fetch(`${API_URL}/history?page=${page}&limit=${limit}`);
     if (!response.ok) {
       throw new Error('Failed to fetch history');
     }
     return await response.json();
   } catch (error) {
     console.error('Error fetching history:', error);
-    return [];
+    return { items: [], total: 0, page, limit };
   }
 }
 
 export async function addHistoryItem(type, timestamp, settings, result) {
   try {
+    const token = getAuthToken();
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+
+    // Add auth token if available (optional - still works without auth)
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const response = await fetch(`${API_URL}/history`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({
         type,
         timestamp,

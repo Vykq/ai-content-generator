@@ -1,8 +1,13 @@
 import { useState, useEffect } from 'react';
-import { isApiKeyConfigured, setFalApiKey } from './services/falService';
-import { uploadFiles, uploadFile, submitEditRequest, submitNanoBananaRequest, submitVeo31Request, submitWanRequest, submitWan25Request, submitFlux2ProRequest, submitGemini3Request } from './services/falService';
+import { getFalApiKey, setFalApiKey } from './services/falService';
+import { getKieApiKey, setKieApiKey } from './services/kieService';
+import { isApiKeyConfigured, getCurrentProvider, setCurrentProvider } from './services/providerService';
+import { uploadFiles, uploadFile, submitEditRequest, submitNanoBananaRequest, submitVeo31Request, submitWanRequest, submitWan25Request, submitFlux2ProRequest, submitGemini3Request, submitZImageTurboRequest, submitQwenRequest } from './services/providerService';
 import { fetchHistory, addHistoryItem, deleteHistoryItem } from './services/historyService';
 import { getCurrentUser, isFanVueConnected, getOAuthConfig, saveOAuthConfig, clearOAuthConfig, initiateOAuthFlow, handleOAuthCallback, clearFanVueTokens } from './services/fanvueService';
+import { isAuthenticated, getCurrentUser as getAuthUser, logout } from './services/authService';
+import { fetchUserSettings, updateUserSettings } from './services/userSettingsService';
+import AuthView from './components/AuthView';
 import ImageUpload from './components/ImageUpload';
 import Sidebar from './components/Sidebar';
 import GirlsView from './components/GirlsView';
@@ -21,6 +26,8 @@ import './App.css';
 const STORAGE_KEYS = {
   falApiKey: 'fal_api_key',
   openAiApiKey: 'openai_api_key',
+  kieApiKey: 'kie_api_key',
+  aiProvider: 'ai_provider',
   defaultJsonPrompt: 'default_json_prompt',
   jsonPromptHistory: 'json_prompt_history',
   fanvueToken: 'fanvue_api_token'
@@ -42,6 +49,7 @@ function normalizeApiKey(rawKey = '') {
 function SendToGeneratorButton({ imageUrl, onSend }) {
   const [selectedGenerator, setSelectedGenerator] = useState('');
 
+  const currentProvider = getCurrentProvider();
   const generators = [
     { id: 'seedream', label: 'SeeD Dream v4.5' },
     { id: 'nanobanana', label: 'Nano Banana Pro' },
@@ -49,7 +57,9 @@ function SendToGeneratorButton({ imageUrl, onSend }) {
     { id: 'wan', label: 'Wan v2.6' },
     { id: 'wan25', label: 'Wan 2.5' },
     { id: 'flux2pro', label: 'Flux 2 Pro' },
-    { id: 'gemini3', label: 'Gemini 3' }
+    { id: 'gemini3', label: 'Gemini 3' },
+    { id: 'zimageturbo', label: 'Z-Image Turbo' },
+    ...(currentProvider === 'kie' ? [{ id: 'qwen', label: 'Qwen' }] : [])
   ];
 
   const handleSend = () => {
@@ -176,8 +186,12 @@ function SeedDreamPanel({ state, setState, onGenerationComplete, onSendImage }) 
       if (enableLogs) addLog('All images ready');
       setUploadProgress(null);
 
+      const provider = getCurrentProvider();
+      const providerName = provider === 'kie' ? 'Kie AI' : 'Fal AI';
+      console.log('Current provider:', provider, 'Provider name:', providerName);
+
       setStatus('Submitting edit request...');
-      if (enableLogs) addLog('Submitting request to fal.ai SeeD Dream v4.5...');
+      if (enableLogs) addLog(`Submitting request to ${providerName} SeeD Dream v4.5...`);
 
       const response = await submitEditRequest({
         prompt: prompt.trim(),
@@ -520,8 +534,12 @@ function NanoBananaPanel({ state, setState, onGenerationComplete, onSendImage })
       if (enableLogs) addLog('All images ready');
       setUploadProgress(null);
 
+      const provider = getCurrentProvider();
+      const providerName = provider === 'kie' ? 'Kie AI' : 'Fal AI';
+      console.log('Nano Banana - Current provider:', provider);
+
       setStatus('Submitting edit request...');
-      if (enableLogs) addLog('Submitting request to fal.ai Nano Banana...');
+      if (enableLogs) addLog(`Submitting request to ${providerName} Nano Banana...`);
 
       const response = await submitNanoBananaRequest({
         prompt: prompt.trim(),
@@ -920,8 +938,13 @@ function Veo31Panel({ state, setState, onGenerationComplete, onSendImage }) {
       const imageUrls = [...urlImages, ...uploadedUrls];
 
       setUploadProgress(null);
+
+      const provider = getCurrentProvider();
+      const providerName = provider === 'kie' ? 'Kie AI' : 'Fal AI';
+      console.log('Veo 3.1 - Current provider:', provider);
+
       setStatus('Generating video...');
-      if (enableLogs) addLog('Submitting video generation request...');
+      if (enableLogs) addLog(`Submitting video generation request to ${providerName} Veo 3.1...`);
 
       const response = await submitVeo31Request({
         prompt: prompt.trim(),
@@ -2632,40 +2655,955 @@ function Gemini3Panel({ state, setState, onGenerationComplete, onSendImage }) {
   );
 }
 
+function ZImageTurboPanel({ state, setState, onGenerationComplete, onSendImage }) {
+  const {
+    prompt,
+    image,
+    enableLogs,
+    imageSize,
+    numInferenceSteps,
+    numImages,
+    strength,
+    seed,
+    outputFormat,
+    enableSafetyChecker,
+    enablePromptExpansion,
+    status,
+    logs,
+    result,
+    isProcessing,
+    uploadProgress
+  } = state;
+
+  const setPrompt = (value) => setState(prev => ({ ...prev, prompt: value }));
+  const setImage = (value) => setState(prev => ({ ...prev, image: value }));
+  const setEnableLogs = (value) => setState(prev => ({ ...prev, enableLogs: value }));
+  const setImageSize = (value) => setState(prev => ({ ...prev, imageSize: value }));
+  const setNumInferenceSteps = (value) => setState(prev => ({ ...prev, numInferenceSteps: value }));
+  const setNumImages = (value) => setState(prev => ({ ...prev, numImages: value }));
+  const setStrength = (value) => setState(prev => ({ ...prev, strength: value }));
+  const setSeed = (value) => setState(prev => ({ ...prev, seed: value }));
+  const setOutputFormat = (value) => setState(prev => ({ ...prev, outputFormat: value }));
+  const setEnableSafetyChecker = (value) => setState(prev => ({ ...prev, enableSafetyChecker: value }));
+  const setEnablePromptExpansion = (value) => setState(prev => ({ ...prev, enablePromptExpansion: value }));
+  const setStatus = (value) => setState(prev => ({ ...prev, status: value }));
+  const setLogs = (value) => setState(prev => ({ ...prev, logs: typeof value === 'function' ? value(prev.logs) : value }));
+  const setResult = (value) => setState(prev => ({ ...prev, result: value }));
+  const setIsProcessing = (value) => setState(prev => ({ ...prev, isProcessing: value }));
+  const setUploadProgress = (value) => setState(prev => ({ ...prev, uploadProgress: value }));
+
+  const addLog = (message) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setLogs((prev) => [...prev, { timestamp, message }]);
+  };
+
+  const handleImageChange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setImage(null);
+      return;
+    }
+
+    const preview = URL.createObjectURL(file);
+    setImage({
+      file,
+      preview,
+      name: file.name,
+      isFromUrl: false
+    });
+  };
+
+  const handleGirlSelect = (girl) => {
+    if (girl) {
+      setImage({
+        id: `girl-${girl.id}-${Date.now()}`,
+        file: null,
+        preview: girl.image_url,
+        name: girl.name,
+        isFromUrl: true
+      });
+
+      if (girl.default_prompt) {
+        const currentPrompt = prompt.trim();
+        const newPrompt = currentPrompt
+          ? `${girl.default_prompt}\n\n${currentPrompt}`
+          : girl.default_prompt;
+        setPrompt(newPrompt);
+      }
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!prompt.trim()) {
+      setStatus('ERROR: Please enter a prompt');
+      return;
+    }
+
+    if (!image) {
+      setStatus('ERROR: Please upload an image');
+      return;
+    }
+
+    setStatus('');
+    setLogs([]);
+    setResult(null);
+    setIsProcessing(true);
+
+    try {
+      if (enableLogs) addLog('Starting image processing...');
+
+      let imageUrl;
+      if (image.isFromUrl) {
+        imageUrl = image.preview;
+        if (enableLogs) addLog('Using URL-based image');
+      } else {
+        setStatus('Uploading image...');
+        if (enableLogs) addLog('Uploading image...');
+        imageUrl = await uploadFile(image.file);
+        if (enableLogs) addLog('Image uploaded successfully');
+      }
+
+      setStatus('Submitting to Z-Image Turbo...');
+      if (enableLogs) addLog('Submitting request to Z-Image Turbo...');
+
+      const result = await submitZImageTurboRequest({
+        prompt: prompt.trim(),
+        imageUrl,
+        imageSize,
+        numInferenceSteps,
+        numImages,
+        strength,
+        seed: seed ? parseInt(seed) : null,
+        outputFormat,
+        enableSafetyChecker,
+        enablePromptExpansion,
+        logs: enableLogs,
+        onQueueUpdate: (update) => {
+          if (update.status === 'IN_PROGRESS') {
+            setStatus(`Processing: ${update.logs?.[update.logs.length - 1]?.message || 'Working...'}`);
+            if (enableLogs && update.logs) {
+              update.logs.forEach(log => addLog(log.message));
+            }
+          } else if (update.status === 'IN_QUEUE') {
+            setStatus(`In queue (position: ${update.position || '?'})`);
+            if (enableLogs) addLog('Request queued');
+          }
+        }
+      });
+
+      setResult(result);
+      setStatus('SUCCESS: Image transformation completed!');
+      if (enableLogs) addLog('Generation complete');
+
+      onGenerationComplete({
+        prompt: prompt.trim(),
+        image,
+        imageSize,
+        numInferenceSteps,
+        numImages,
+        strength,
+        seed,
+        outputFormat,
+        enableSafetyChecker,
+        enablePromptExpansion
+      }, result);
+
+    } catch (error) {
+      setStatus(`ERROR: ${error.message}`);
+      if (enableLogs) addLog(`Error: ${error.message}`);
+    } finally {
+      setIsProcessing(false);
+      setUploadProgress(null);
+    }
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+      {/* Left Panel - Settings */}
+      <div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Z-Image Turbo Image-to-Image</CardTitle>
+            <CardDescription>Fast image transformation using Tongyi-MAI's 6B parameter model</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="zimage-prompt">Prompt</Label>
+                <Textarea
+                  id="zimage-prompt"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="Describe the transformation you want..."
+                  rows={3}
+                  disabled={isProcessing}
+                />
+              </div>
+
+              <GirlSelector onSelect={handleGirlSelect} disabled={isProcessing} />
+
+              <div>
+                <Label htmlFor="zimage-image">Input Image</Label>
+                <input
+                  id="zimage-image"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  disabled={isProcessing}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+                {image && (
+                  <div className="mt-4">
+                    <img
+                      src={image.preview}
+                      alt="Input preview"
+                      className="w-full max-w-xs rounded-md"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="zimage-image-size">Image Size</Label>
+                  <Select value={imageSize} onValueChange={setImageSize} disabled={isProcessing}>
+                    <SelectTrigger id="zimage-image-size">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">Auto</SelectItem>
+                      <SelectItem value="square_hd">Square HD</SelectItem>
+                      <SelectItem value="square">Square</SelectItem>
+                      <SelectItem value="portrait_4_3">Portrait 4:3</SelectItem>
+                      <SelectItem value="portrait_16_9">Portrait 16:9</SelectItem>
+                      <SelectItem value="landscape_4_3">Landscape 4:3</SelectItem>
+                      <SelectItem value="landscape_16_9">Landscape 16:9</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="zimage-output-format">Output Format</Label>
+                  <Select value={outputFormat} onValueChange={setOutputFormat} disabled={isProcessing}>
+                    <SelectTrigger id="zimage-output-format">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="png">PNG</SelectItem>
+                      <SelectItem value="jpeg">JPEG</SelectItem>
+                      <SelectItem value="webp">WebP</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="zimage-num-images">Number of Images</Label>
+                  <Select
+                    value={numImages.toString()}
+                    onValueChange={(val) => setNumImages(Number(val))}
+                    disabled={isProcessing}
+                  >
+                    <SelectTrigger id="zimage-num-images">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1 Image</SelectItem>
+                      <SelectItem value="2">2 Images</SelectItem>
+                      <SelectItem value="3">3 Images</SelectItem>
+                      <SelectItem value="4">4 Images</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="zimage-steps">Inference Steps</Label>
+                  <Select
+                    value={numInferenceSteps.toString()}
+                    onValueChange={(val) => setNumInferenceSteps(Number(val))}
+                    disabled={isProcessing}
+                  >
+                    <SelectTrigger id="zimage-steps">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="4">4 Steps (Fastest)</SelectItem>
+                      <SelectItem value="6">6 Steps</SelectItem>
+                      <SelectItem value="8">8 Steps (Best Quality)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="zimage-strength">Transformation Strength: {strength}</Label>
+                <input
+                  id="zimage-strength"
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={strength}
+                  onChange={(e) => setStrength(parseFloat(e.target.value))}
+                  disabled={isProcessing}
+                  className="w-full"
+                />
+                <p className="text-xs text-muted-foreground mt-1">0 = Keep original, 1 = Full transformation</p>
+              </div>
+
+              <div>
+                <Label htmlFor="zimage-seed">Seed (Optional)</Label>
+                <input
+                  id="zimage-seed"
+                  type="number"
+                  min="0"
+                  max="2147483647"
+                  value={seed}
+                  onChange={(e) => setSeed(e.target.value)}
+                  placeholder="Leave empty for random"
+                  disabled={isProcessing}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="zimage-safety-checker"
+                  checked={enableSafetyChecker}
+                  onCheckedChange={setEnableSafetyChecker}
+                  disabled={isProcessing}
+                />
+                <Label htmlFor="zimage-safety-checker">Enable Safety Checker</Label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="zimage-prompt-expansion"
+                  checked={enablePromptExpansion}
+                  onCheckedChange={setEnablePromptExpansion}
+                  disabled={isProcessing}
+                />
+                <Label htmlFor="zimage-prompt-expansion">Enable Prompt Expansion</Label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="zimage-logs"
+                  checked={enableLogs}
+                  onCheckedChange={setEnableLogs}
+                  disabled={isProcessing}
+                />
+                <Label htmlFor="zimage-logs">Enable Progress Logs</Label>
+              </div>
+
+              <Button type="submit" className="w-full" disabled={isProcessing}>
+                {isProcessing ? 'Processing...' : 'Transform Image'}
+              </Button>
+
+              {uploadProgress && (
+                <p className="text-sm text-muted-foreground">
+                  {uploadProgress}
+                </p>
+              )}
+
+              <p className="text-xs text-muted-foreground">
+                Pricing: $0.005 per megapixel
+              </p>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Right Panel - Logs and Results */}
+      <div className="space-y-6">
+        {status && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Status</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className={status.startsWith('ERROR') ? 'text-destructive' : status.startsWith('SUCCESS') ? 'text-green-600' : ''}>
+                {status}
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {enableLogs && logs.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Logs</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-1 max-h-60 overflow-y-auto">
+                {logs.map((log, index) => (
+                  <div key={index} className="log-entry">
+                    <span className="log-timestamp">{log.timestamp}</span>
+                    <span>{log.message}</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {result && result.images && result.images.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Transformed Images</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 gap-4">
+                {result.images.map((image, index) => (
+                  <div key={index}>
+                    <img
+                      src={image.url}
+                      alt={`Transformed ${index + 1}`}
+                      className="w-full rounded-md"
+                    />
+                    {image.width && image.height && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {image.width} x {image.height}
+                      </p>
+                    )}
+                    <div className="flex gap-2 mt-2">
+                      <Button asChild className="flex-1">
+                        <a href={image.url} download target="_blank" rel="noopener noreferrer">
+                          Download
+                        </a>
+                      </Button>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-border">
+                      <Label className="text-xs mb-2 block">Send to Generator:</Label>
+                      <SendToGeneratorButton imageUrl={image.url} onSend={onSendImage} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {result.seed !== undefined && (
+                <p className="text-sm mt-4">
+                  <strong>Seed:</strong> {result.seed}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function QwenPanel({ state, setState, onGenerationComplete, onSendImage }) {
+  const {
+    prompt,
+    image,
+    enableLogs,
+    strength,
+    outputFormat,
+    acceleration,
+    negativePrompt,
+    seed,
+    numInferenceSteps,
+    guidanceScale,
+    enableSafetyChecker,
+    status,
+    logs,
+    result,
+    isProcessing,
+    uploadProgress
+  } = state;
+
+  const setPrompt = (value) => setState(prev => ({ ...prev, prompt: value }));
+  const setImage = (value) => setState(prev => ({ ...prev, image: value }));
+  const setEnableLogs = (value) => setState(prev => ({ ...prev, enableLogs: value }));
+  const setStrength = (value) => setState(prev => ({ ...prev, strength: value }));
+  const setOutputFormat = (value) => setState(prev => ({ ...prev, outputFormat: value }));
+  const setAcceleration = (value) => setState(prev => ({ ...prev, acceleration: value }));
+  const setNegativePrompt = (value) => setState(prev => ({ ...prev, negativePrompt: value }));
+  const setSeed = (value) => setState(prev => ({ ...prev, seed: value }));
+  const setNumInferenceSteps = (value) => setState(prev => ({ ...prev, numInferenceSteps: value }));
+  const setGuidanceScale = (value) => setState(prev => ({ ...prev, guidanceScale: value }));
+  const setEnableSafetyChecker = (value) => setState(prev => ({ ...prev, enableSafetyChecker: value }));
+  const setStatus = (value) => setState(prev => ({ ...prev, status: value }));
+  const setLogs = (value) => setState(prev => ({ ...prev, logs: typeof value === 'function' ? value(prev.logs) : value }));
+  const setResult = (value) => setState(prev => ({ ...prev, result: value }));
+  const setIsProcessing = (value) => setState(prev => ({ ...prev, isProcessing: value }));
+  const setUploadProgress = (value) => setState(prev => ({ ...prev, uploadProgress: value }));
+
+  const addLog = (message) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setLogs((prev) => [...prev, { timestamp, message }]);
+  };
+
+  const handleImageChange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setImage(null);
+      return;
+    }
+
+    const preview = URL.createObjectURL(file);
+    setImage({
+      file,
+      preview,
+      name: file.name,
+      isFromUrl: false
+    });
+  };
+
+  const handleGirlSelect = (girl) => {
+    if (girl) {
+      setImage({
+        id: `girl-${girl.id}-${Date.now()}`,
+        file: null,
+        preview: girl.image_url,
+        name: girl.name,
+        isFromUrl: true
+      });
+
+      if (girl.default_prompt) {
+        const currentPrompt = prompt.trim();
+        const newPrompt = currentPrompt
+          ? `${girl.default_prompt}\n\n${currentPrompt}`
+          : girl.default_prompt;
+        setPrompt(newPrompt);
+      }
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!prompt.trim()) {
+      setStatus('ERROR: Please enter a prompt');
+      return;
+    }
+
+    if (!image) {
+      setStatus('ERROR: Please upload an image');
+      return;
+    }
+
+    setStatus('');
+    setLogs([]);
+    setResult(null);
+    setIsProcessing(true);
+
+    try {
+      if (enableLogs) addLog('Starting image processing...');
+
+      let imageUrl;
+      if (image.isFromUrl) {
+        imageUrl = image.preview;
+        if (enableLogs) addLog('Using URL-based image');
+      } else {
+        setStatus('Uploading image...');
+        if (enableLogs) addLog('Uploading image...');
+        imageUrl = await uploadFile(image.file);
+        if (enableLogs) addLog('Image uploaded successfully');
+      }
+
+      setStatus('Submitting to Qwen...');
+      if (enableLogs) addLog('Submitting request to Kie AI Qwen...');
+
+      const result = await submitQwenRequest({
+        prompt: prompt.trim(),
+        imageUrl,
+        strength,
+        outputFormat,
+        acceleration,
+        negativePrompt,
+        seed: seed ? parseInt(seed) : null,
+        numInferenceSteps,
+        guidanceScale,
+        enableSafetyChecker,
+        logs: enableLogs,
+        onQueueUpdate: (update) => {
+          if (update.status === 'IN_PROGRESS') {
+            setStatus(`Processing: ${update.logs?.[update.logs.length - 1]?.message || 'Working...'}`);
+            if (enableLogs && update.logs) {
+              update.logs.forEach(log => addLog(log.message));
+            }
+          } else if (update.status === 'IN_QUEUE') {
+            setStatus(`In queue (position: ${update.position || '?'})`);
+            if (enableLogs) addLog('Request queued');
+          }
+        }
+      });
+
+      setResult(result.data || result);
+      setStatus('SUCCESS: Image transformation completed!');
+      if (enableLogs) addLog('Generation complete');
+
+      onGenerationComplete({
+        prompt: prompt.trim(),
+        image,
+        strength,
+        outputFormat,
+        acceleration,
+        negativePrompt,
+        seed,
+        numInferenceSteps,
+        guidanceScale,
+        enableSafetyChecker
+      }, result.data || result);
+
+    } catch (error) {
+      setStatus(`ERROR: ${error.message}`);
+      if (enableLogs) addLog(`Error: ${error.message}`);
+    } finally {
+      setIsProcessing(false);
+      setUploadProgress(null);
+    }
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+      {/* Left Panel - Settings */}
+      <div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Qwen Image-to-Image</CardTitle>
+            <CardDescription>Transform images using Qwen model on Kie AI</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="qwen-prompt">Prompt</Label>
+                <Textarea
+                  id="qwen-prompt"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="Describe the transformation you want (max 5000 characters)..."
+                  rows={3}
+                  disabled={isProcessing}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="qwen-negative-prompt">Negative Prompt</Label>
+                <Textarea
+                  id="qwen-negative-prompt"
+                  value={negativePrompt}
+                  onChange={(e) => setNegativePrompt(e.target.value)}
+                  placeholder="What to avoid (max 500 characters)..."
+                  rows={2}
+                  disabled={isProcessing}
+                />
+              </div>
+
+              <GirlSelector onSelect={handleGirlSelect} disabled={isProcessing} />
+
+              <div>
+                <Label htmlFor="qwen-image">Input Image</Label>
+                <input
+                  id="qwen-image"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleImageChange}
+                  disabled={isProcessing}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+                <p className="text-xs text-muted-foreground mt-1">JPEG/PNG/WebP, max 10MB</p>
+                {image && (
+                  <div className="mt-4">
+                    <img
+                      src={image.preview}
+                      alt="Input preview"
+                      className="w-full max-w-xs rounded-md"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="qwen-output-format">Output Format</Label>
+                  <Select value={outputFormat} onValueChange={setOutputFormat} disabled={isProcessing}>
+                    <SelectTrigger id="qwen-output-format">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="png">PNG</SelectItem>
+                      <SelectItem value="jpeg">JPEG</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="qwen-acceleration">Acceleration</Label>
+                  <Select value={acceleration} onValueChange={setAcceleration} disabled={isProcessing}>
+                    <SelectTrigger id="qwen-acceleration">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None (Best Quality)</SelectItem>
+                      <SelectItem value="regular">Regular</SelectItem>
+                      <SelectItem value="high">High (Fastest)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="qwen-strength">Remix Strength: {strength}</Label>
+                <input
+                  id="qwen-strength"
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={strength}
+                  onChange={(e) => setStrength(parseFloat(e.target.value))}
+                  disabled={isProcessing}
+                  className="w-full"
+                />
+                <p className="text-xs text-muted-foreground mt-1">0 = Keep original, 1 = Full transformation</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="qwen-steps">Inference Steps: {numInferenceSteps}</Label>
+                  <input
+                    id="qwen-steps"
+                    type="range"
+                    min="2"
+                    max="250"
+                    step="1"
+                    value={numInferenceSteps}
+                    onChange={(e) => setNumInferenceSteps(parseInt(e.target.value))}
+                    disabled={isProcessing}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground">2-250 (default 30)</p>
+                </div>
+
+                <div>
+                  <Label htmlFor="qwen-guidance">Guidance Scale: {guidanceScale}</Label>
+                  <input
+                    id="qwen-guidance"
+                    type="range"
+                    min="0"
+                    max="20"
+                    step="0.5"
+                    value={guidanceScale}
+                    onChange={(e) => setGuidanceScale(parseFloat(e.target.value))}
+                    disabled={isProcessing}
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground">0-20 (default 2.5)</p>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="qwen-seed">Seed (Optional)</Label>
+                <input
+                  id="qwen-seed"
+                  type="number"
+                  min="0"
+                  value={seed}
+                  onChange={(e) => setSeed(e.target.value)}
+                  placeholder="Leave empty for random"
+                  disabled={isProcessing}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="qwen-safety-checker"
+                  checked={enableSafetyChecker}
+                  onCheckedChange={setEnableSafetyChecker}
+                  disabled={isProcessing}
+                />
+                <Label htmlFor="qwen-safety-checker">Enable Safety Checker</Label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="qwen-logs"
+                  checked={enableLogs}
+                  onCheckedChange={setEnableLogs}
+                  disabled={isProcessing}
+                />
+                <Label htmlFor="qwen-logs">Enable Progress Logs</Label>
+              </div>
+
+              <Button type="submit" className="w-full" disabled={isProcessing}>
+                {isProcessing ? 'Processing...' : 'Transform Image'}
+              </Button>
+
+              {uploadProgress && (
+                <p className="text-sm text-muted-foreground">
+                  {uploadProgress}
+                </p>
+              )}
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Right Panel - Logs and Results */}
+      <div className="space-y-6">
+        {status && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Status</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className={status.startsWith('ERROR') ? 'text-destructive' : status.startsWith('SUCCESS') ? 'text-green-600' : ''}>
+                {status}
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {enableLogs && logs.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Logs</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-1 max-h-60 overflow-y-auto">
+                {logs.map((log, index) => (
+                  <div key={index} className="log-entry">
+                    <span className="log-timestamp">{log.timestamp}</span>
+                    <span>{log.message}</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {result && result.images && result.images.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Transformed Images</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 gap-4">
+                {result.images.map((image, index) => (
+                  <div key={index}>
+                    <img
+                      src={image.url}
+                      alt={`Transformed ${index + 1}`}
+                      className="w-full rounded-md"
+                    />
+                    {image.width && image.height && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {image.width} x {image.height}
+                      </p>
+                    )}
+                    <div className="flex gap-2 mt-2">
+                      <Button asChild className="flex-1">
+                        <a href={image.url} download target="_blank" rel="noopener noreferrer">
+                          Download
+                        </a>
+                      </Button>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-border">
+                      <Label className="text-xs mb-2 block">Send to Generator:</Label>
+                      <SendToGeneratorButton imageUrl={image.url} onSend={onSendImage} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {result.seed !== undefined && (
+                <p className="text-sm mt-4">
+                  <strong>Seed:</strong> {result.seed}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SettingsView() {
-  const [falApiKey, setFalApiKeyState] = useState(() => readStoredValue(STORAGE_KEYS.falApiKey));
-  const [openAiApiKey, setOpenAiApiKey] = useState(() => readStoredValue(STORAGE_KEYS.openAiApiKey));
-  const [defaultJsonPrompt, setDefaultJsonPrompt] = useState(() => readStoredValue(STORAGE_KEYS.defaultJsonPrompt));
+  const [falApiKey, setFalApiKeyState] = useState('');
+  const [openAiApiKey, setOpenAiApiKey] = useState('');
+  const [kieApiKey, setKieApiKeyState] = useState('');
+  const [aiProvider, setAiProvider] = useState('fal');
+  const [defaultJsonPrompt, setDefaultJsonPrompt] = useState('');
   const [fanvueUser, setFanvueUser] = useState(null);
   const [isFanvueConnecting, setIsFanvueConnecting] = useState(false);
   const [status, setStatus] = useState('');
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
 
   // OAuth config state
   const [oauthConfig, setOauthConfig] = useState(() => getOAuthConfig());
   const [showOAuthSetup, setShowOAuthSetup] = useState(false);
 
-  const handleSave = () => {
+  // Load settings from server on mount
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    setIsLoadingSettings(true);
+    try {
+      const settings = await fetchUserSettings();
+      setFalApiKeyState(settings.fal_api_key || '');
+      setKieApiKeyState(settings.kie_api_key || '');
+      setAiProvider(settings.ai_provider || 'fal');
+      setOpenAiApiKey(settings.openai_api_key || '');
+      setDefaultJsonPrompt(settings.default_json_prompt || '');
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+      setStatus('Failed to load settings');
+      setTimeout(() => setStatus(''), 3000);
+    } finally {
+      setIsLoadingSettings(false);
+    }
+  };
+
+  const handleSave = async () => {
     const trimmedFalKey = falApiKey.trim();
+    const trimmedKieKey = kieApiKey.trim();
     const cleanedOpenAiKey = normalizeApiKey(openAiApiKey);
 
-    setFalApiKey(trimmedFalKey);
-
-    if (typeof localStorage !== 'undefined') {
-      if (cleanedOpenAiKey) {
-        localStorage.setItem(STORAGE_KEYS.openAiApiKey, cleanedOpenAiKey);
-      } else {
-        localStorage.removeItem(STORAGE_KEYS.openAiApiKey);
-      }
-
-      if (defaultJsonPrompt.trim()) {
-        localStorage.setItem(STORAGE_KEYS.defaultJsonPrompt, defaultJsonPrompt);
-      } else {
-        localStorage.removeItem(STORAGE_KEYS.defaultJsonPrompt);
-      }
+    // Validate that selected provider has API key
+    if (aiProvider === 'fal' && !trimmedFalKey) {
+      setStatus('ERROR: Fal AI API key is required');
+      setTimeout(() => setStatus(''), 3000);
+      return;
     }
 
-    setStatus('Settings saved.');
-    setTimeout(() => setStatus(''), 2000);
+    if (aiProvider === 'kie' && !trimmedKieKey) {
+      setStatus('ERROR: Kie AI API key is required');
+      setTimeout(() => setStatus(''), 3000);
+      return;
+    }
+
+    try {
+      // Save settings to server
+      await updateUserSettings({
+        fal_api_key: trimmedFalKey,
+        kie_api_key: trimmedKieKey,
+        ai_provider: aiProvider,
+        openai_api_key: cleanedOpenAiKey,
+        default_json_prompt: defaultJsonPrompt.trim()
+      });
+
+      // Also save to local state for immediate use
+      setCurrentProvider(aiProvider);
+      setFalApiKey(trimmedFalKey);
+      setKieApiKey(trimmedKieKey);
+      console.log('Settings saved. Provider set to:', aiProvider);
+
+      setStatus('Settings saved.');
+      setTimeout(() => setStatus(''), 2000);
+    } catch (error) {
+      console.error('Failed to save settings:', error);
+      setStatus('ERROR: Failed to save settings');
+      setTimeout(() => setStatus(''), 3000);
+    }
   };
 
   const handleSaveOAuthConfig = () => {
@@ -2781,19 +3719,66 @@ function SettingsView() {
         <Card>
           <CardHeader>
             <CardTitle>API Keys</CardTitle>
-            <CardDescription>Keys are saved locally in your browser.</CardDescription>
+            <CardDescription>Configure your AI provider and API keys. Keys are saved locally in your browser.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="fal-api-key">FAL AI API Key</Label>
-              <Input
-                id="fal-api-key"
-                type="password"
-                value={falApiKey}
-                onChange={(e) => setFalApiKeyState(e.target.value)}
-                placeholder="Paste your FAL API key"
-              />
+              <Label>AI Provider</Label>
+              <div className="flex gap-4 mt-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="provider"
+                    value="fal"
+                    checked={aiProvider === 'fal'}
+                    onChange={(e) => setAiProvider(e.target.value)}
+                    className="w-4 h-4"
+                  />
+                  <span>Fal AI</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="provider"
+                    value="kie"
+                    checked={aiProvider === 'kie'}
+                    onChange={(e) => setAiProvider(e.target.value)}
+                    className="w-4 h-4"
+                  />
+                  <span>Kie AI</span>
+                </label>
+              </div>
             </div>
+
+            {aiProvider === 'fal' && (
+              <div className="space-y-2">
+                <Label htmlFor="fal-api-key">FAL AI API Key</Label>
+                <Input
+                  id="fal-api-key"
+                  type="password"
+                  value={falApiKey}
+                  onChange={(e) => setFalApiKeyState(e.target.value)}
+                  placeholder="Paste your FAL API key"
+                />
+              </div>
+            )}
+
+            {aiProvider === 'kie' && (
+              <div className="space-y-2">
+                <Label htmlFor="kie-api-key">Kie AI API Key</Label>
+                <Input
+                  id="kie-api-key"
+                  type="password"
+                  value={kieApiKey}
+                  onChange={(e) => setKieApiKeyState(e.target.value)}
+                  placeholder="Paste your Kie AI API key"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Get your API key from <a href="https://kie.ai" target="_blank" rel="noopener noreferrer" className="underline">kie.ai</a>
+                </p>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="openai-api-key">OpenAI API Key</Label>
               <Input
@@ -3057,7 +4042,9 @@ function JsonPrompterView({ onSendToModel }) {
       wan: 'Wan v2.6',
       wan25: 'Wan 2.5',
       flux2pro: 'Flux 2 Pro',
-      gemini3: 'Gemini 3'
+      gemini3: 'Gemini 3',
+      zimageturbo: 'Z-Image Turbo',
+      qwen: 'Qwen'
     };
     return models[modelId] || modelId;
   };
@@ -3267,6 +4254,10 @@ ${defaultTemplate ? `Follow this JSON structure (this is just an example of the 
                     <SelectItem value="wan25">Wan 2.5</SelectItem>
                     <SelectItem value="flux2pro">Flux 2 Pro</SelectItem>
                     <SelectItem value="gemini3">Gemini 3</SelectItem>
+                    <SelectItem value="zimageturbo">Z-Image Turbo</SelectItem>
+                    {getCurrentProvider() === 'kie' && (
+                      <SelectItem value="qwen">Qwen</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
                 <Button onClick={handleSendToModel} disabled={!selectedModel}>Send</Button>
@@ -3327,7 +4318,47 @@ ${defaultTemplate ? `Follow this JSON structure (this is just an example of the 
   );
 }
 
-function HistoryView({ history, isLoading, onRestore, onDelete }) {
+const HISTORY_PAGE_SIZE = 24;
+
+function HistoryView({ onRestore }) {
+  const [history, setHistory] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const totalPages = Math.ceil(total / HISTORY_PAGE_SIZE);
+
+  const loadPage = async (pageNum) => {
+    setIsLoading(true);
+    const data = await fetchHistory(pageNum, HISTORY_PAGE_SIZE);
+    if (Array.isArray(data)) {
+      // legacy flat-array response (server not yet restarted)
+      setHistory(data);
+      setTotal(data.length);
+    } else {
+      setHistory(data.items || []);
+      setTotal(data.total || 0);
+    }
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    loadPage(page);
+  }, [page]);
+
+  const handleDelete = async (id) => {
+    try {
+      await deleteHistoryItem(id);
+      // If we deleted the last item on a non-first page, go back one page
+      if (history.length === 1 && page > 1) {
+        setPage(prev => prev - 1);
+      } else {
+        loadPage(page);
+      }
+    } catch (error) {
+      console.error('Failed to delete history item:', error);
+    }
+  };
+
   const getModelDisplayName = (type) => {
     const models = {
       seedream: 'SeeD Dream v4.5',
@@ -3336,7 +4367,9 @@ function HistoryView({ history, isLoading, onRestore, onDelete }) {
       wan: 'Wan v2.6',
       wan25: 'Wan 2.5',
       flux2pro: 'Flux 2 Pro',
-      gemini3: 'Gemini 3 Pro'
+      gemini3: 'Gemini 3 Pro',
+      zimageturbo: 'Z-Image Turbo',
+      qwen: 'Qwen'
     };
     return models[type] || type;
   };
@@ -3346,7 +4379,10 @@ function HistoryView({ history, isLoading, onRestore, onDelete }) {
       <div className="max-w-7xl mx-auto">
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">Generation History</h1>
-          <p className="text-muted-foreground">View and restore your previous generations.</p>
+          <p className="text-muted-foreground">
+            View and restore your previous generations.
+            {total > 0 && <span className="ml-2 text-sm">({total} total)</span>}
+          </p>
         </div>
 
         {isLoading ? (
@@ -3356,56 +4392,135 @@ function HistoryView({ history, isLoading, onRestore, onDelete }) {
             </CardContent>
           </Card>
         ) : history.length > 0 ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
-            {history.map((item) => (
-              <div
-                key={item.id}
-                className="group relative"
-              >
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+              {history.map((item) => (
                 <div
-                  className="aspect-square rounded-lg overflow-hidden border-2 border-border group-hover:border-primary transition-colors cursor-pointer"
-                  onClick={() => onRestore(item)}
+                  key={item.id}
+                  className="group relative"
                 >
-                  {item.result?.images?.[0] && (
-                    <img
-                      src={item.result.images[0].url}
-                      alt={item.settings.prompt}
-                      className="w-full h-full object-cover"
-                    />
-                  )}
-                  {item.result?.video && (
-                    <video
-                      src={item.result.video.url}
-                      className="w-full h-full object-cover"
-                      muted
-                    />
-                  )}
+                  <div
+                    className="aspect-square rounded-lg overflow-hidden border-2 border-border group-hover:border-primary transition-colors cursor-pointer"
+                    onClick={() => onRestore(item)}
+                  >
+                    {item.result?.images?.[0] && (
+                      <img
+                        src={item.result.images[0].url}
+                        alt={item.settings.prompt}
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                    {item.result?.video && (
+                      <video
+                        src={item.result.video.url}
+                        className="w-full h-full object-cover"
+                        muted
+                      />
+                    )}
+                  </div>
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(item.id);
+                    }}
+                  >
+                    ×
+                  </Button>
+                  <div className="mt-2 space-y-1">
+                    <div className="text-xs font-medium text-primary">
+                      {getModelDisplayName(item.type)}
+                    </div>
+                    {item.username && (
+                      <div className="text-xs font-medium text-foreground">
+                        by {item.username}
+                      </div>
+                    )}
+                    <div className="text-xs text-muted-foreground line-clamp-2">
+                      {item.settings.prompt}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {item.timestamp}
+                    </div>
+                  </div>
                 </div>
+              ))}
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 mt-10">
                 <Button
-                  variant="destructive"
-                  size="icon"
-                  className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete(item.id);
-                  }}
+                  variant="ghost"
+                  size="sm"
+                  disabled={page === 1}
+                  onClick={() => setPage(1)}
                 >
-                  ×
+                  «
                 </Button>
-                <div className="mt-2 space-y-1">
-                  <div className="text-xs font-medium text-primary">
-                    {getModelDisplayName(item.type)}
-                  </div>
-                  <div className="text-xs text-muted-foreground line-clamp-2">
-                    {item.settings.prompt}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {item.timestamp}
-                  </div>
-                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={page === 1}
+                  onClick={() => setPage(p => p - 1)}
+                >
+                  ‹
+                </Button>
+
+                {(() => {
+                  const window = 2;
+                  const pages = [];
+                  const start = Math.max(1, page - window);
+                  const end = Math.min(totalPages, page + window);
+
+                  if (start > 1) {
+                    pages.push(1);
+                    if (start > 2) pages.push('...');
+                  }
+                  for (let i = start; i <= end; i++) pages.push(i);
+                  if (end < totalPages) {
+                    if (end < totalPages - 1) pages.push('...');
+                    pages.push(totalPages);
+                  }
+
+                  return pages.map((p, idx) =>
+                    p === '...' ? (
+                      <span key={`dots-${idx}`} className="px-1 text-muted-foreground">…</span>
+                    ) : (
+                      <Button
+                        key={p}
+                        variant={p === page ? 'default' : 'ghost'}
+                        size="sm"
+                        className="w-9"
+                        onClick={() => setPage(p)}
+                      >
+                        {p}
+                      </Button>
+                    )
+                  );
+                })()}
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={page === totalPages}
+                  onClick={() => setPage(p => p + 1)}
+                >
+                  ›
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={page === totalPages}
+                  onClick={() => setPage(totalPages)}
+                >
+                  »
+                </Button>
               </div>
-            ))}
-          </div>
+            )}
+          </>
         ) : (
           <Card>
             <CardContent className="p-8">
@@ -3421,22 +4536,12 @@ function HistoryView({ history, isLoading, onRestore, onDelete }) {
 function App() {
   const [activeView, setActiveView] = useState('generate');
   const [activeTab, setActiveTab] = useState('seedream');
-  const [history, setHistory] = useState([]);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [isAuthenticatedUser, setIsAuthenticatedUser] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [tabDrawerOpen, setTabDrawerOpen] = useState(false);
 
-  // Load history from database on mount
-  useEffect(() => {
-    loadHistory();
-  }, []);
-
-  const loadHistory = async () => {
-    setIsLoadingHistory(true);
-    const data = await fetchHistory();
-    setHistory(data);
-    setIsLoadingHistory(false);
-  };
-
-  // State for SeeD Dream tab
+  // State for SeeD Dream tab - MUST be declared before any conditional returns
   const [seedDreamState, setSeedDreamState] = useState({
     prompt: '',
     images: [],
@@ -3557,24 +4662,118 @@ function App() {
     uploadProgress: null
   });
 
+  // State for Z-Image Turbo tab
+  const [zImageTurboState, setZImageTurboState] = useState({
+    prompt: '',
+    image: null,
+    enableLogs: true,
+    imageSize: 'auto',
+    numInferenceSteps: 8,
+    numImages: 1,
+    strength: 0.6,
+    seed: '',
+    outputFormat: 'png',
+    enableSafetyChecker: true,
+    enablePromptExpansion: false,
+    status: '',
+    logs: [],
+    result: null,
+    isProcessing: false,
+    uploadProgress: null
+  });
+
+  // State for Qwen tab (Kie AI only)
+  const [qwenState, setQwenState] = useState({
+    prompt: '',
+    image: null,
+    enableLogs: true,
+    strength: 0.8,
+    outputFormat: 'png',
+    acceleration: 'none',
+    negativePrompt: 'blurry, ugly',
+    seed: '',
+    numInferenceSteps: 30,
+    guidanceScale: 2.5,
+    enableSafetyChecker: true,
+    status: '',
+    logs: [],
+    result: null,
+    isProcessing: false,
+    uploadProgress: null
+  });
+
+  // Track current provider for conditional tabs
+  const [currentProviderState, setCurrentProviderState] = useState(() => getCurrentProvider());
+
+  const tabItems = [
+    { id: 'seedream', label: 'SeeD Dream v4.5' },
+    { id: 'nanobanana', label: 'Nano Banana Pro' },
+    { id: 'veo31', label: 'Veo 3.1' },
+    { id: 'wan', label: 'Wan v2.6' },
+    { id: 'wan25', label: 'Wan 2.5' },
+    { id: 'flux2pro', label: 'Flux 2 Pro' },
+    { id: 'gemini3', label: 'Gemini 3' },
+    { id: 'zimageturbo', label: 'Z-Image Turbo' },
+    ...(currentProviderState === 'kie' ? [{ id: 'qwen', label: 'Qwen' }] : []),
+  ];
+
+  // Define helper functions before effects that use them
+  const loadUserSettings = async () => {
+    try {
+      const settings = await fetchUserSettings();
+      // Apply settings to the app
+      // Always set Fal API key (from settings or keep existing from .env)
+      if (settings.fal_api_key) {
+        setFalApiKey(settings.fal_api_key);
+      } else {
+        // If no key in database, ensure .env key is configured
+        const envKey = getFalApiKey();
+        if (envKey) {
+          setFalApiKey(envKey);
+        }
+      }
+      if (settings.kie_api_key) {
+        setKieApiKey(settings.kie_api_key);
+      }
+      if (settings.ai_provider) {
+        setCurrentProvider(settings.ai_provider);
+      }
+    } catch (error) {
+      console.error('Failed to load user settings:', error);
+    }
+  };
+
+  const handleLoginSuccess = (user) => {
+    setIsAuthenticatedUser(true);
+    setCurrentUser(user);
+    // Load user settings after login
+    loadUserSettings();
+  };
+
+  // Check authentication on mount - MUST be after all useState declarations
+  useEffect(() => {
+    const authenticated = isAuthenticated();
+    setIsAuthenticatedUser(authenticated);
+    if (authenticated) {
+      const user = getAuthUser();
+      setCurrentUser(user);
+      // Load user settings when app starts with authenticated user
+      loadUserSettings();
+    }
+  }, []);
+
+  // Show login screen if not authenticated - MUST be after all hooks
+  if (!isAuthenticatedUser) {
+    return <AuthView onLoginSuccess={handleLoginSuccess} />;
+  }
+
   // Add to history when generation completes
   const addToHistory = async (type, settings, result) => {
     const timestamp = new Date().toLocaleString();
     try {
-      const savedItem = await addHistoryItem(type, timestamp, settings, result);
-      setHistory(prev => [savedItem, ...prev]);
+      await addHistoryItem(type, timestamp, settings, result);
     } catch (error) {
       console.error('Failed to save history item:', error);
-    }
-  };
-
-  // Delete history item
-  const handleDeleteHistory = async (id) => {
-    try {
-      await deleteHistoryItem(id);
-      setHistory(prev => prev.filter(item => item.id !== id));
-    } catch (error) {
-      console.error('Failed to delete history item:', error);
     }
   };
 
@@ -3666,6 +4865,36 @@ function App() {
         enableWebSearch: item.settings.enableWebSearch,
         result: item.result
       }));
+    } else if (item.type === 'zimageturbo') {
+      setZImageTurboState(prev => ({
+        ...prev,
+        prompt: item.settings.prompt,
+        image: item.settings.image,
+        imageSize: item.settings.imageSize,
+        numInferenceSteps: item.settings.numInferenceSteps,
+        numImages: item.settings.numImages,
+        strength: item.settings.strength,
+        seed: item.settings.seed,
+        outputFormat: item.settings.outputFormat,
+        enableSafetyChecker: item.settings.enableSafetyChecker,
+        enablePromptExpansion: item.settings.enablePromptExpansion,
+        result: item.result
+      }));
+    } else if (item.type === 'qwen') {
+      setQwenState(prev => ({
+        ...prev,
+        prompt: item.settings.prompt,
+        image: item.settings.image,
+        strength: item.settings.strength,
+        outputFormat: item.settings.outputFormat,
+        acceleration: item.settings.acceleration,
+        negativePrompt: item.settings.negativePrompt,
+        seed: item.settings.seed,
+        numInferenceSteps: item.settings.numInferenceSteps,
+        guidanceScale: item.settings.guidanceScale,
+        enableSafetyChecker: item.settings.enableSafetyChecker,
+        result: item.result
+      }));
     }
   };
 
@@ -3729,6 +4958,18 @@ function App() {
         prompt,
         images: girlImage ? [girlImage] : []
       }));
+    } else if (modelId === 'zimageturbo') {
+      setZImageTurboState(prev => ({
+        ...prev,
+        prompt,
+        image: girlImage || null
+      }));
+    } else if (modelId === 'qwen') {
+      setQwenState(prev => ({
+        ...prev,
+        prompt,
+        image: girlImage || null
+      }));
     }
   };
 
@@ -3783,6 +5024,16 @@ function App() {
         ...prev,
         images: [...(Array.isArray(prev.images) ? prev.images : []), imageObject]
       }));
+    } else if (targetModelId === 'zimageturbo') {
+      setZImageTurboState(prev => ({
+        ...prev,
+        image: imageObject
+      }));
+    } else if (targetModelId === 'qwen') {
+      setQwenState(prev => ({
+        ...prev,
+        image: imageObject
+      }));
     }
   };
 
@@ -3799,13 +5050,10 @@ function App() {
     if (activeView === 'history') {
       return (
         <HistoryView
-          history={history}
-          isLoading={isLoadingHistory}
           onRestore={(item) => {
             restoreFromHistory(item);
             setActiveView('generate');
           }}
-          onDelete={handleDeleteHistory}
         />
       );
     }
@@ -3826,14 +5074,10 @@ function App() {
               </div>
 
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full max-w-5xl grid-cols-7">
-            <TabsTrigger value="seedream">SeeD Dream v4.5</TabsTrigger>
-            <TabsTrigger value="nanobanana">Nano Banana Pro</TabsTrigger>
-            <TabsTrigger value="veo31">Veo 3.1</TabsTrigger>
-            <TabsTrigger value="wan">Wan v2.6</TabsTrigger>
-            <TabsTrigger value="wan25">Wan 2.5</TabsTrigger>
-            <TabsTrigger value="flux2pro">Flux 2 Pro</TabsTrigger>
-            <TabsTrigger value="gemini3">Gemini 3</TabsTrigger>
+          <TabsList className={`hidden lg:grid w-full max-w-6xl ${tabItems.length > 8 ? 'grid-cols-9' : 'grid-cols-8'}`}>
+            {tabItems.map((tab) => (
+              <TabsTrigger key={tab.id} value={tab.id}>{tab.label}</TabsTrigger>
+            ))}
           </TabsList>
 
           <TabsContent value="seedream">
@@ -3898,6 +5142,26 @@ function App() {
               onSendImage={handleSendImageToGenerator}
             />
           </TabsContent>
+
+          <TabsContent value="zimageturbo">
+            <ZImageTurboPanel
+              state={zImageTurboState}
+              setState={setZImageTurboState}
+              onGenerationComplete={(settings, result) => addToHistory('zimageturbo', settings, result)}
+              onSendImage={handleSendImageToGenerator}
+            />
+          </TabsContent>
+
+          {currentProviderState === 'kie' && (
+            <TabsContent value="qwen">
+              <QwenPanel
+                state={qwenState}
+                setState={setQwenState}
+                onGenerationComplete={(settings, result) => addToHistory('qwen', settings, result)}
+                onSendImage={handleSendImageToGenerator}
+              />
+            </TabsContent>
+          )}
         </Tabs>
             </div>
           </div>
@@ -3906,9 +5170,89 @@ function App() {
 
   return (
     <div className="flex min-h-screen bg-background">
-      <Sidebar activeView={activeView} setActiveView={setActiveView} />
+      {/* Mobile backdrop */}
+      {(sidebarOpen || tabDrawerOpen) && (
+        <div
+          className="fixed inset-0 bg-black/50 z-30 lg:hidden"
+          onClick={() => { setSidebarOpen(false); setTabDrawerOpen(false); }}
+        />
+      )}
 
-      <div className="flex-1">
+      <Sidebar
+        activeView={activeView}
+        setActiveView={setActiveView}
+        currentUser={currentUser}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
+
+      {/* Right-side tab drawer — mobile only */}
+      <div
+        className={[
+          'fixed inset-y-0 right-0 z-40 w-64 bg-card border-l border-border p-4 flex flex-col',
+          'transition-transform duration-300 ease-in-out',
+          tabDrawerOpen ? 'translate-x-0' : 'translate-x-full',
+          'lg:hidden',
+        ].join(' ')}
+      >
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-lg font-bold">Generators</h2>
+          <button
+            onClick={() => setTabDrawerOpen(false)}
+            aria-label="Close tabs"
+            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <nav className="space-y-2">
+          {tabItems.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => { setActiveTab(tab.id); setTabDrawerOpen(false); }}
+              className={[
+                'w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors',
+                activeTab === tab.id
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-foreground hover:bg-muted',
+              ].join(' ')}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      <div className="flex-1 min-w-0">
+        {/* Mobile top bar with hamburger */}
+        <div className="lg:hidden flex items-center justify-between px-4 py-3 border-b border-border bg-card sticky top-0 z-20">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open menu"
+            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <span className="text-sm font-semibold">AI Image Editor</span>
+          {activeView === 'generate' ? (
+            <button
+              onClick={() => setTabDrawerOpen(true)}
+              aria-label="Open tabs"
+              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 6h-8M20 12H4M20 18h-8" />
+              </svg>
+            </button>
+          ) : (
+            <div className="w-9" />
+          )}
+        </div>
+
         {renderView()}
       </div>
     </div>
